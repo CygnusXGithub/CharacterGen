@@ -4,7 +4,7 @@ An AI-powered character card generator and editor with intelligent context handl
 
 ## Overview
 
-CharacterGen is a Python-based application for efficiently creating and editing v2 character cards. It uses a sophisticated prompt system that combines base prompts with user input and contextual information to generate character attributes in a customizable order.
+CharacterGen is a Python-based application for creating and editing v2 character cards. It uses a prompt system that combines base prompts with user input and contextual information to generate character attributes in a customizable order.
 
 ## Features
 
