@@ -26,6 +26,9 @@ CharacterGen is a Python-based application for creating and editing v2 character
    ## Generation Tab
   ![GenTab](/images/GenTab.png)
 
+## TODO
+  - update ReadMe
+
 ## Planned Features
   - Loading png cards
   - Adding png pictures to the character and saving as either png or JSON
