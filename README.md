@@ -1,52 +1,99 @@
 # CharacterGen
-AI powered character card editor and generator 
 
-How to rum:
-Have python
-Clone directory
-Use start.bat
+An AI-powered character card generator and editor with intelligent context handling and cascading regeneration capabilities.
 
-What CharGen is:
-Chargen is for effeciently generating or editing v2 character cards.
-It uses a base prompt for each field then combines that with your input and context for the output.
-It generates the fields in a order you set, and can use any of the previously gened outputs within the next prompt.
-After generating you can save the character, edit the output, regen single fields or do a cascading regeneration, which regens any fields affected by the field you click regen on.
+## Overview
 
-Features:
-Character card loading from JSON and saving into JSON.
-Unique prompts and generation for each field.
-Intelligent context, by using tags within the base prompt you can choose exactly where different pieces of context goes, aswell as the user input.
-Easy regeneration and Cascading regeneration.
+CharacterGen is a Python-based application for efficiently creating and editing v2 character cards. It uses a sophisticated prompt system that combines base prompts with user input and contextual information to generate character attributes in a customizable order.
+
+## Features
+
+- **Intelligent Context Generation**: Uses a tag-based system for precise context placement
+- **Flexible Generation Order**: Customizable field generation sequence with dependency handling
+- **Character Management**:
+  - Load and save character cards in JSON format
+  - Edit generated outputs
+  - Single field regeneration
+  - Cascading regeneration for dependent fields
+- **Base Prompt System**:
+  - Save and load different prompt sets
+  - Conditional content based on user input
+  - Context-aware field references
+
+## Installation
+
+### Prerequisites
+- Python 3.x
+- Required packages (install via pip):
+  ```bash
+  pip install PyQt6 requests pyyaml
+  ```
+
+### Setup
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/CharacterGen.git
+   cd CharacterGen
+   ```
+2. Configure the API settings in `config.yaml`:
+   ```yaml
+   API_URL: "http://127.0.0.1:5000/v1/chat/completions"
+   API_KEY: "YOUR_API_KEY"
+   ```
+3. Run the application:
+   ```bash
+   python character_gen.py
+   # Or use the provided start.bat on Windows
+   ```
+
+## Usage
+
+### Base Prompts Tab
+
+The Base Prompts tab is where you configure the generation templates for each character field.
+
+#### Available Tags
+- Basic Field Tags:
+  - `{{input}}`: User input insertion
+  - `{{name}}`: Character name
+  - `{{description}}`: Character description
+  - `{{scenario}}`: Scenario information
+  - `{{first_mes}}`: First message
+  - `{{mes_example}}`: Message examples
+  - `{{personality}}`: Personality traits
+
+- Conditional Input Tags:
+  ```
+  {{if_input}}
+  Content only included when user provides input
+  {{/if_input}}
+  ```
+
+#### Generation Order
+- Set the order by numbering fields (1-6)
+- Only reference tags from fields that come earlier in the generation order
+- Fields without base prompts are skipped during generation
+
+### Generation Tab
+
+#### Character Management
+- Load/save characters using the top controls
+- Character files are stored in the `characters` folder
+- Save completed characters using the "Save Character" button
+
+#### Field Generation
+- **Name Field**: Toggle between direct input and generated name
+- **Other Fields**: Input is optional, used as context in generation
+- **Generation Controls**:
+  - "Generate All": Sequential generation of all fields
+  - 🔄: Regenerate single field
+  - 🔄+: Cascading regeneration (updates dependent fields)
+
+## Tips
+- Save different base prompt sets for different character types
+- Use conditional tags to handle optional input gracefully
+- Set generation order to build context progressively
+- Use cascading regeneration to maintain consistency
 
 
-How to use:
--Baseprompt tab:
-The base prompt tab contains the prompts that are combined with the input to send to your endpoint.
-It uses some simple tags to achieve this, it looks for
-- {{input}}
-- {{name}}
-- {{description}}
-- {{scenario}}
-- {{first_mes}}
-- {mes_example}}
-- {{personality}}
 
-It also has a conditional tag, which only send the content between the tags if there is input on the generation field by the user
-- {{if_input}}
-- {{/if_input}}
-
-I included a default base prompt that you can use as an example if needed, I do recommend tuning the prompts or entirely changing them to suite your needs.
-
-Along with the prompt itself is a generation order, when using tags you should only add a tag to a field above it in the generation order.
-Simply set the order by numbering them upwards. If there is no text in the baseprompt field, it will not be generated or put into the character card.
-
-You can save and load base prompts and name them to have different sets.
-
-
-- Generation tab:
-Here you can load and save characters at the top and with the button at the bottom, to load a json put it into the characters folder, currently I have not added loading from png's.
-
-With the name field you have the option to generate a name, or directly use the typed input.
-All other fields will just put whatever is typed into the {{input}} tag of their respective base prompt. If no text is there then it is still generated, but {{input}} in the prompt is just replaced as empty which is why the conditional tags may be useful.
-At the bottom is the generate all button which will go through one by one and fill in the outputs.
-Alongside each field are two buttons, the top regen button regens that field alone. The second regen button with the plus regenerates that field, and also any below it in the generation order that reference tags(fields) that have changed.
