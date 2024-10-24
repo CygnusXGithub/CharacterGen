@@ -83,6 +83,10 @@ The Base Prompts tab is where you configure the generation templates for each ch
   - `{{mes_example}}`: Message examples
   - `{{personality}}`: Personality traits
 
+- Ignored Tags(Passed over and not replaced:
+  - `{{char}}`: Ignored since they are used within silly tavern to replace Character names
+  - `{{user}}`: Ignored since they are used within silly tavern to replace User names
+  
 - Conditional Input Tags:
   ```
   {{if_input}}
