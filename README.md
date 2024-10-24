@@ -19,6 +19,12 @@ CharacterGen is a Python-based application for efficiently creating and editing 
   - Save and load different prompt sets
   - Conditional content based on user input
   - Context-aware field references
+ 
+  ## Base Prompt Tab
+  ![BasePrompts](/images/basePrompt.png)
+
+   ## Generation Tab
+  ![GenTab](/images/GenTab.png)
 
 ## Installation
 
