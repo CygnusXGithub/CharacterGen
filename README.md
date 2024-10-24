@@ -32,6 +32,8 @@ CharacterGen is a Python-based application for creating and editing v2 character
   - Field focus, a way to expand a field or multiple that you are working on to a much larger text area
   - Editing of the other fields making up a v2 card such as creator, version, tags etc.
   - adding more conditional tags such as {{if_no_input}}
+  - New character button that quickly clears out the text fields.
+  - Saving the user prompts into the card to be repopulated when loading a card, this could also be done with the basePrompts used for generating that card.
   - AICharED made by Zoltan, AVA, and Neptune has alot of nice features that I like but may never get around to adding them. I would enjoy implementing their better UI formatting, and maybe QoL features such as:
     - a tag cheat sheet with quick copy
     - info on hover for each fields function
