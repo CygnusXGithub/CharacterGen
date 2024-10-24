@@ -218,6 +218,7 @@ class ApiService:
                 }
             ],
             "mode": "instruct",
+            "max_tokens": 2048,
         }
     
     def _prepare_headers(self) -> Dict[str, str]:
