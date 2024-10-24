@@ -1,9 +1,11 @@
-# API configuration
+# ------- API configuration ------- #
 ## For Atleast Ooba and KoboldCCP the below URL should work. The important part is /v1/chat/completions. If you use a different URL or Port please change that info.
 API_URL: "http://127.0.0.1:5000/v1/chat/completions"
 # If you do not use an API Key, leave blank Ex. API_KEY: ""
 API_KEY: "YOURKEY"
 
+
+## ---- Needs work ------##
 # File paths
 ## These are currently Vestigial and will be removed later, but not right now.
 JSON_TEMPLATE_PATH: "data/template.json"
@@ -11,4 +13,5 @@ OUTPUT_JSON_PATH: "data/output.json"
 USER_PROMPTS_PATH: "config/user_prompts.yaml"
 
 # Feature flags
+## Not being checked for currently
 UPDATE_REFERENCES: false
