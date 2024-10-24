@@ -1,53 +1,18 @@
 @echo off
-REM CharacterGen Launch Script
+echo Checking and installing dependencies...
 
-REM Check if Python is installed
-python --version >nul 2>&1
-if errorlevel 1 (
-    echo Python is not found! Please install Python 3.x
+:: Check if pip is available
+where pip >nul 2>nul
+if %ERRORLEVEL% neq 0 (
+    echo Error: pip is not installed or not in PATH
     pause
     exit /b 1
 )
 
-REM Check if virtual environment exists
-if not exist venv (
-    echo Creating virtual environment...
-    python -m venv venv
-)
+:: Install required packages
+pip install PyQt6 requests pyyaml
 
-REM Activate virtual environment
-call venv\Scripts\activate
-
-REM Explicitly check and install required packages
-python -c "import PIL" >nul 2>&1
-if errorlevel 1 (
-    echo Installing Pillow...
-    pip install Pillow
-)
-
-python -c "import yaml" >nul 2>&1
-if errorlevel 1 (
-    echo Installing PyYAML...
-    pip install pyyaml
-)
-
-python -c "import PyQt6" >nul 2>&1
-if errorlevel 1 (
-    echo Installing PyQt6...
-    pip install PyQt6
-)
-
-python -c "import requests" >nul 2>&1
-if errorlevel 1 (
-    echo Installing requests...
-    pip install requests
-)
-
-REM Launch application
-python main.py
-if errorlevel 1 (
-    echo Application crashed! Check the logs for details.
-    pause
-)
-
-deactivate
+:: Run the program
+echo Starting Character Generator...
+python character_gen.py
+pause
