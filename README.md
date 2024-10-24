@@ -54,7 +54,7 @@ CharacterGen is a Python-based application for creating and editing v2 character
    git clone https://github.com/yourusername/CharacterGen.git
    cd CharacterGen
    ```
-2. Configure the API settings in `config.yaml`:
+2. Configure the API settings in `config.yaml`. For atleast Ooba and KoboldCCP don't forget the /v1/chat/completions:
    ```yaml
    API_URL: "http://127.0.0.1:5000/v1/chat/completions"
    API_KEY: "YOUR_API_KEY"
