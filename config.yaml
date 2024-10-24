@@ -1,0 +1,11 @@
+# API configuration
+API_URL: "http://127.0.0.1:5000/v1/chat/completions"
+API_KEY: "YOURKEY"
+
+# File paths
+JSON_TEMPLATE_PATH: "data/template.json"
+OUTPUT_JSON_PATH: "data/output.json"
+USER_PROMPTS_PATH: "config/user_prompts.yaml"
+
+# Feature flags
+UPDATE_REFERENCES: false
