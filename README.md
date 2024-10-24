@@ -29,11 +29,12 @@ CharacterGen is a Python-based application for creating and editing v2 character
 ## Planned Features
   - Loading png cards
   - Adding png pictures to the character and saving as either png or JSON
-  - Field focus, a way to expand a field or multiple that you are working on to a much larger text area
+  - Field focus, a way to expand a field or multiple that you are working on to a much larger text area.
   - Editing of the other fields making up a v2 card such as creator, version, tags etc.
   - adding more conditional tags such as {{if_no_input}}
   - New character button that quickly clears out the text fields.
   - Ability to generate/save mutliple first messages with one as the main first message and the rest going into alternate greetings. Ideally when considered along with saving user prompts, each greeting would save the prompts used to generate it, being able to switch which you are working on and loading both the Message and the prompt.
+  - Generate and append button for Mes_examples to create a longer list of examples easily.
   - Configuration tab to pass some simple generation perameters like max tokens, as well as be a place to include other configuration options.
   - Saving the user prompts into the card to be repopulated when loading a card, this could also be done with the basePrompts used for generating that card.
   - AICharED made by Zoltan, AVA, and Neptune has alot of nice features that I like but may never get around to adding them. I would enjoy implementing their better UI formatting, and maybe QoL features such as:
