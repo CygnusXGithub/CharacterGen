@@ -1,0 +1,36 @@
+{
+    "data": {
+      "name": "",
+      "description": "",
+      "personality": "",
+      "first_mes": "",
+      "avatar": "none",
+      "mes_example": "",
+      "scenario": "",
+      "creator_notes": "",
+      "system_prompt": "",
+      "post_history_instructions": "",
+      "alternate_greetings": [],
+      "tags": [],
+      "creator": "Anonymous",
+      "character_version": "main",
+      "extensions": {
+        "chub": {
+          "expressions": null,
+          "alt_expressions": {},
+          "id": 123456,
+          "full_path": "",
+          "related_lorebooks": [],
+          "background_image": null,
+          "preset": null,
+          "extensions": []
+        },
+        "depth_prompt": {
+          "depth": 0,
+          "prompt": ""
+        }
+      }
+    },
+    "spec": "chara_card_v2",
+    "spec_version": "2.0"
+  }
