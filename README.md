@@ -6,19 +6,21 @@ CharacterGen is a Python-based application for creating and editing v2 character
 
 ## Features
 
-- **Intelligent Context Generation**: Uses a tag-based system for precise context placement
-- **Flexible Generation Order**: Customizable field generation sequence with dependency handling
 - **Character Management**:
   - Load and save character cards in JSON or PNG format
   - Edit generated outputs
   - Single field regeneration
   - Cascading regeneration for dependent fields
+- **Ease Of Use**:
+  - Field focus, a way to expand a field or multiple that you are working on to a much larger text area.
+  - Ability to generate/save multiple first messages with one as the main first message and the rest going into alternate greetings.
+  - Append generated message examples easily.
 - **Base Prompt System**:
   - Save and load different prompt sets
   - Conditional content based on user input
   - Context-aware field references
-- **Ease Of Use**:
-  - - Field focus, a way to expand a field or multiple that you are working on to a much larger text area.
+- **Intelligent Context Generation**: Uses a tag-based system for precise context placement
+- **Flexible Generation Order**: Customizable field generation sequence with dependency handling
  
   ## Base Prompt Tab
   ![BasePrompts](/images/basePrompt.png)
@@ -30,7 +32,6 @@ CharacterGen is a Python-based application for creating and editing v2 character
    (in progress)
   - Editing of the other fields making up a v2 card such as creator, version, tags etc.
   - adding more conditional tags such as {{if_no_input}}
-  - Ability to generate/save mutliple first messages with one as the main first message and the rest going into alternate greetings. Ideally when considered along with saving user prompts, each greeting would save the prompts used to generate it, being able to switch which you are working on and loading both the Message and the prompt. (in progress)
   - Configuration tab to pass some simple generation perameters like max tokens, as well as be a place to include other configuration options.
   - Saving the user prompts into the card to be repopulated when loading a card, this could also be done with the basePrompts used for generating that card.
   - AICharED made by Zoltan, AVA, and Neptune has alot of nice features that I like but may never get around to adding them. I would enjoy implementing their better UI formatting, and maybe QoL features such as:
