@@ -2,4 +2,4 @@
 ## For Atleast Ooba and KoboldCCP the below URL should work. The important part is /v1/chat/completions. If you use a different URL or Port please change that info.
 API_URL: "http://127.0.0.1:5000/v1/chat/completions"
 # If you do not use an API Key, leave blank Ex. API_KEY: ""
-API_KEY: "YOURKEY"
+API_KEY: "2112"

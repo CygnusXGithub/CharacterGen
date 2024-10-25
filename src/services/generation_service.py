@@ -78,16 +78,14 @@ class GenerationService:
             self._add_to_history(error_result)
             raise
     
-    def generate_field_with_deps(self, 
-                                context: GenerationContext,
-                                callbacks: Optional[GenerationCallbacks] = None) -> Dict[FieldName, GenerationResult]:
-        """Generate a field and its dependents"""
+    def generate_field_with_deps(self, context: GenerationContext, 
+                               callbacks: Optional[GenerationCallbacks] = None) -> Dict[FieldName, GenerationResult]:
         results = {}
         
-        # Get the ordered list of fields
-        ordered_fields = self.prompt_service.get_generation_order()
+        # Get the ordered list of fields (only those with orders)
+        ordered_fields = self._get_ordered_fields()
         if not ordered_fields:
-            raise GenerationError("No generation order defined")
+            raise GenerationError("No fields with generation order defined")
         
         # Find starting index
         try:
@@ -189,6 +187,15 @@ class GenerationService:
             if callbacks and callbacks.on_error:
                 callbacks.on_error(FieldName.MES_EXAMPLE, e)
             raise
+    
+    def _get_ordered_fields(self) -> List[FieldName]:
+        """Get fields with order, sorted by order number"""
+        ordered_fields = [
+            (field, template.generation_order)
+            for field, template in self.prompt_service.current_set.templates.items()
+            if hasattr(template, 'generation_order') and template.generation_order >= 0
+        ]
+        return [field for field, _ in sorted(ordered_fields, key=lambda x: x[1])]
     
     def _add_to_history(self, result: GenerationResult) -> None:
         """Add generation result to history"""

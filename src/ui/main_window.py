@@ -94,9 +94,10 @@ class MainWindow(QMainWindow):
         
         # Set central widget
         self.setCentralWidget(self.tabs)
-        
-        # Connect tab signals
-        self.base_prompts_tab.prompt_set_loaded.connect(self._handle_prompt_set_loaded)
+
+        # Removed so as to not auto swap tabs on Prompt load
+        # # Connect tab signals
+        # self.base_prompts_tab.prompt_set_loaded.connect(self._handle_prompt_set_loaded)
     
     def _create_menus(self):
         """Create application menus"""
@@ -156,11 +157,12 @@ class MainWindow(QMainWindow):
         """Handle about request"""
         dialog = AboutDialog(self)
         dialog.exec()
-    
-    def _handle_prompt_set_loaded(self, prompt_set):
-        """Handle when a prompt set is loaded"""
-        # Switch to generation tab when prompts are loaded
-        self.tabs.setCurrentWidget(self.generation_tab)
+
+    # Removed so as to not auto swap tabs on Prompt load
+    # def _handle_prompt_set_loaded(self, prompt_set):
+    #     """Handle when a prompt set is loaded"""
+    #     # Switch to generation tab when prompts are loaded
+    #     self.tabs.setCurrentWidget(self.generation_tab)
     
     def _load_settings(self):
         """Load application settings"""

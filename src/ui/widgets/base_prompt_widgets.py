@@ -32,10 +32,10 @@ class BasePromptWidget(QWidget):
         
         # Generation order input
         header.addWidget(QLabel("Generation Order:"))
-        self.order_input = QSpinBox()
-        self.order_input.setRange(0, 99)
-        self.order_input.valueChanged.connect(
-            lambda value: self.order_changed.emit(self.field, value)
+        self.order_input = QLineEdit()  # Changed from QSpinBox to QLineEdit
+        self.order_input.setPlaceholderText("Optional")
+        self.order_input.textChanged.connect(
+            lambda text: self._handle_order_change(text)
         )
         header.addWidget(self.order_input)
         
@@ -76,6 +76,19 @@ class BasePromptWidget(QWidget):
         
         self.setLayout(layout)
     
+    def _handle_order_change(self, text: str):
+        """Handle order input changes"""
+        if text.strip():  # Only emit if there's actual text
+            try:
+                order = int(text)
+                self.order_changed.emit(self.field, order)
+            except ValueError:
+                # Reset to empty if invalid number
+                self.order_input.setText("")
+        else:
+            # Emit with -1 to indicate no order
+            self.order_changed.emit(self.field, -1)
+
     def get_prompt(self) -> str:
         """Get prompt text"""
         return self.prompt_edit.toPlainText()
@@ -84,13 +97,17 @@ class BasePromptWidget(QWidget):
         """Set prompt text"""
         self.prompt_edit.setPlainText(text)
     
-    def get_order(self) -> int:
-        """Get generation order"""
-        return self.order_input.value()
+    def get_order(self) -> Optional[int]:
+        """Get generation order, returns None if empty"""
+        text = self.order_input.text().strip()
+        try:
+            return int(text) if text else None
+        except ValueError:
+            return None
     
-    def set_order(self, value: int):
+    def set_order(self, value: Optional[int]):
         """Set generation order"""
-        self.order_input.setValue(value)
+        self.order_input.setText(str(value) if value is not None else "")
     
     def clear(self):
         """Clear all inputs"""
@@ -252,8 +269,9 @@ class BasePromptsContainer(QWidget):
     def get_orders(self) -> Dict[FieldName, int]:
         """Get all generation orders"""
         return {
-            field: widget.get_order()
+            field: order
             for field, widget in self.prompt_widgets.items()
+            if (order := widget.get_order()) is not None
         }
     
     def set_prompts(self, prompts: Dict[FieldName, str]):

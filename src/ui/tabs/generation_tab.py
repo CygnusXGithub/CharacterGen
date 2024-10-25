@@ -182,8 +182,8 @@ class GenerationTab(QWidget):
     
     def _handle_save_character(self, name: Optional[str] = None):
         """Handle saving of character"""
-        if not name:
-            name = self.load_save.save_name.text().strip()
+        # Get name from the save name input field at the top
+        name = self.load_save.save_name.text().strip()
         
         if not name:
             QMessageBox.warning(
@@ -197,6 +197,9 @@ class GenerationTab(QWidget):
             # Create or update character data
             if not self.current_character:
                 self.current_character = self.character_service.create_character(name)
+            
+            # Update character name
+            self.current_character.name = name  # Add this line to ensure name is set
             
             # Update fields
             for field, text_edit in self.output_texts.items():
