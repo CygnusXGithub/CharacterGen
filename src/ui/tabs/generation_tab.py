@@ -16,7 +16,7 @@ from ...services.character_service import CharacterService
 from ...services.generation_service import GenerationService
 from ..widgets.field_widgets import (
     FieldInputWidget, MessageExampleWidget,
-    FirstMessageWidget, FieldViewManager
+    FirstMessageWidget, FieldViewManager,AlternateGreetingsWidget
 )
 from ..widgets.common import LoadSaveWidget, DragDropFrame, StatusBar
 
@@ -151,6 +151,11 @@ class GenerationTab(QWidget):
             
             # Add field container to main container
             output_container_layout.addWidget(field_container)
+            
+            # Add alternate greetings widget after first_mes
+            if field == FieldName.FIRST_MES:
+                self.alt_greetings_widget = AlternateGreetingsWidget()
+                output_container_layout.addWidget(self.alt_greetings_widget)
         
         # Add stretch at the end
         output_container_layout.addStretch()
@@ -223,6 +228,7 @@ class GenerationTab(QWidget):
         try:
             characters = self.character_service.list_characters()
             self.load_save.update_items(characters)
+            
         except CharacterLoadError as e:
             QMessageBox.warning(
                 self,
@@ -234,12 +240,18 @@ class GenerationTab(QWidget):
         """Handle loading of a character"""
         if not name:
             return
-            
+                
         try:
             self.current_character = self.character_service.load(name)
             
             # Update UI
             self._update_output_displays(self.current_character.fields)
+            
+            # Load alternate greetings
+            if self.current_character.alternate_greetings:
+                self.alt_greetings_widget.set_greetings(self.current_character.alternate_greetings)
+            else:
+                self.alt_greetings_widget.set_greetings([])  # Clear if no greetings
             
             self.status_bar.set_status(f"Loaded character: {name}")
             
@@ -269,11 +281,14 @@ class GenerationTab(QWidget):
                 self.current_character = self.character_service.create_character(name)
             
             # Update character name
-            self.current_character.name = name  # Add this line to ensure name is set
+            self.current_character.name = name
             
             # Update fields
             for field, text_edit in self.output_texts.items():
                 self.current_character.fields[field] = text_edit.toPlainText()
+            
+            # Update alternate greetings
+            self.current_character.alternate_greetings = self.alt_greetings_widget.greetings
             
             # Save character
             format = CardFormat(self.format_selector.currentText())
@@ -385,6 +400,19 @@ class GenerationTab(QWidget):
     
     def _handle_regen_with_deps(self, field: FieldName):
         """Handle regeneration of a field and its dependents"""
+        if field == FieldName.FIRST_MES and self.alt_greetings_widget.greetings:
+            msg = QMessageBox.warning(
+                self,
+                "Clear Alternate Greetings",
+                "Regenerating First Message will clear all alternate greetings. Continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            
+            if msg == QMessageBox.StandardButton.No:
+                return
+            
+            self.alt_greetings_widget.clear_greetings()
+
         try:
             context = self._create_generation_context(field)
             callbacks = self._create_callbacks()
@@ -450,9 +478,9 @@ class GenerationTab(QWidget):
             )
             
             if new_greeting:
-                self.current_character.alternate_greetings.append(new_greeting)
+                self.alt_greetings_widget.add_greeting(new_greeting)
                 self.status_bar.set_status("Added new alternate greeting")
-            
+        
         except Exception as e:
             QMessageBox.warning(
                 self,

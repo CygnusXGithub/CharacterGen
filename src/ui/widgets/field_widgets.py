@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Optional, List, Dict, Any
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit,
     QPushButton, QLabel, QCheckBox, QFrame,
@@ -188,6 +188,121 @@ class FirstMessageWidget(FieldInputWidget):
         # Add to main layout
         self.layout().addLayout(greeting_layout)
 
+class AlternateGreetingsWidget(QWidget):
+    """Widget for displaying and managing alternate greetings"""
+    greeting_updated = pyqtSignal(int, str)  # Index, new text
+    greeting_deleted = pyqtSignal(int)       # Index to delete
+    greeting_regenerated = pyqtSignal(int)   # Index to regenerate
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.greetings = []
+        self.current_index = 0
+        self._init_ui()
+    
+    def _init_ui(self):
+        layout = QVBoxLayout()
+        
+        # Header
+        header = QHBoxLayout()
+        header.addWidget(QLabel("Alternate Greetings"))
+        layout.addLayout(header)
+        
+        # Navigation and controls
+        controls = QHBoxLayout()
+        
+        self.prev_btn = QPushButton("←")
+        self.prev_btn.setFixedWidth(30)
+        self.prev_btn.clicked.connect(self._previous_greeting)
+        controls.addWidget(self.prev_btn)
+        
+        self.counter_label = QLabel("0/0")
+        controls.addWidget(self.counter_label)
+        
+        self.next_btn = QPushButton("→")
+        self.next_btn.setFixedWidth(30)
+        self.next_btn.clicked.connect(self._next_greeting)
+        controls.addWidget(self.next_btn)
+        
+        controls.addStretch()
+        
+        # Regenerate current greeting button
+        self.regen_btn = QPushButton("🔄")
+        self.regen_btn.setFixedWidth(30)
+        self.regen_btn.setToolTip("Regenerate this greeting")
+        self.regen_btn.clicked.connect(
+            lambda: self.greeting_regenerated.emit(self.current_index)
+        )
+        controls.addWidget(self.regen_btn)
+        
+        layout.addLayout(controls)
+        
+        # Text display
+        self.text_edit = QTextEdit()
+        self.text_edit.textChanged.connect(self._text_changed)
+        layout.addWidget(self.text_edit)
+        
+        self.setLayout(layout)
+        self.setVisible(False)  # Hidden by default
+        
+        self._update_controls()
+    
+    def _text_changed(self):
+        """Handle text changes"""
+        if self.greetings:
+            self.greeting_updated.emit(
+                self.current_index,
+                self.text_edit.toPlainText()
+            )
+    
+    def _previous_greeting(self):
+        """Show previous greeting"""
+        if self.greetings and self.current_index > 0:
+            self.current_index -= 1
+            self._update_display()
+    
+    def _next_greeting(self):
+        """Show next greeting"""
+        if self.greetings and self.current_index < len(self.greetings) - 1:
+            self.current_index += 1
+            self._update_display()
+    
+    def _update_controls(self):
+        """Update control states"""
+        has_greetings = bool(self.greetings)
+        self.setVisible(has_greetings)
+        if has_greetings:
+            self.prev_btn.setEnabled(self.current_index > 0)
+            self.next_btn.setEnabled(self.current_index < len(self.greetings) - 1)
+            self.counter_label.setText(f"{self.current_index + 1}/{len(self.greetings)}")
+    
+    def _update_display(self):
+        """Update displayed greeting"""
+        if self.greetings:
+            self.text_edit.blockSignals(True)
+            self.text_edit.setPlainText(self.greetings[self.current_index])
+            self.text_edit.blockSignals(False)
+            self._update_controls()
+    
+    def set_greetings(self, greetings: List[str]):
+        """Set the list of greetings"""
+        self.greetings = greetings
+        self.current_index = 0 if greetings else -1
+        self._update_display()
+        self._update_controls()
+    
+    def add_greeting(self, greeting: str):
+        """Add a new greeting"""
+        self.greetings.append(greeting)
+        self.current_index = len(self.greetings) - 1
+        self._update_display()
+    
+    def clear_greetings(self):
+        """Clear all greetings"""
+        self.greetings = []
+        self.current_index = -1
+        self._update_display()
+        
 class ExpandedFieldView(QWidget):
     """Expanded view for focused fields"""
     input_changed = pyqtSignal(str)  # Signal for input changes
