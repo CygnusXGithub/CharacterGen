@@ -40,7 +40,8 @@ CharacterGen is a Python-based application for creating and editing v2 character
 
 ## Installation
 
-  - broken features, don't use
+  - broken features
+  - currently the conditional tags may not be working right, skipping input in the default prompt, this is a priority to fix
     - Add alternate greeting, not hooked up right and wont save
     - add example on mes_example, works, but it may not use the new input
 
