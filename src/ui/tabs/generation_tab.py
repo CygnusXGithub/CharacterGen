@@ -415,19 +415,6 @@ class GenerationTab(QWidget):
     
     def _handle_regen_with_deps(self, field: FieldName):
         """Handle regeneration of a field and its dependents"""
-        if field == FieldName.FIRST_MES and self.alt_greetings_widget.greetings:
-            msg = QMessageBox.warning(
-                self,
-                "Clear Alternate Greetings",
-                "Regenerating First Message will clear all alternate greetings. Continue?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            
-            if msg == QMessageBox.StandardButton.No:
-                return
-            
-            self.alt_greetings_widget.clear_greetings()
-
         try:
             context = self._create_generation_context(field)
             callbacks = self._create_callbacks()
@@ -456,24 +443,43 @@ class GenerationTab(QWidget):
                 f"Error during generation: {str(e)}"
             )
     
-    def _handle_append_example(self, field: FieldName, context: str):
+    def _handle_append_example(self, field: FieldName):
         """Handle appending a new message example"""
         try:
             if not self.current_character:
                 raise GenerationError("No character loaded")
             
-            new_example = self.generation_service.append_message_example(
-                self.current_character,
-                context,
-                self._create_callbacks()
+            # Get current output text
+            current_text = self.output_texts[FieldName.MES_EXAMPLE].toPlainText()
+            
+            # Use current prompt input for generation
+            input_text = self.input_widgets[FieldName.MES_EXAMPLE].get_input()
+            
+            # Create specialized callbacks that won't overwrite existing text
+            callbacks = GenerationCallbacks(
+                on_start=lambda field: self.status_bar.set_status(
+                    "Generating additional examples..."
+                ),
+                on_progress=None,  # Don't update the main field
+                on_result=None,    # We'll handle the result manually
+                on_error=lambda field, error: self._handle_generation_error(
+                    field, error
+                )
             )
             
-            # Append to existing examples
-            current_text = self.output_texts[FieldName.MES_EXAMPLE].toPlainText()
-            updated_text = (current_text + "\n\n" + new_example 
-                          if current_text else new_example)
-            self.output_texts[FieldName.MES_EXAMPLE].setPlainText(updated_text)
+            new_example = self.generation_service.append_message_example(
+                self.current_character,
+                input_text,
+                callbacks
+            )
             
+            if new_example:
+                # Append to existing examples
+                updated_text = (current_text + "\n\n" + new_example 
+                            if current_text.strip() else new_example)
+                self.output_texts[FieldName.MES_EXAMPLE].setPlainText(updated_text)
+                self.status_bar.set_status("Appended new message example")
+                
         except Exception as e:
             QMessageBox.warning(
                 self,

@@ -105,19 +105,14 @@ class FieldInputWidget(QWidget):
     
     def _toggle_focus(self):
         """Toggle field focus mode"""
-        self.ui_mode = (UIMode.EXPANDED if self.ui_mode == UIMode.COMPACT 
-                       else UIMode.COMPACT)
-        self._update_ui_mode()
-        self.focus_changed.emit(self.field, self.ui_mode == UIMode.EXPANDED)
+        # Only emit the focus signal, don't change the main field's appearance
+        is_focused = any(view.isVisible() for view in self.parent().findChildren(ExpandedFieldView))
+        self.focus_changed.emit(self.field, not is_focused)
     
     def _update_ui_mode(self):
-        """Update UI based on current mode"""
-        if self.ui_mode == UIMode.EXPANDED:
-            self.input.setMaximumHeight(16777215)  # Remove height limit
-            self.input.setMinimumHeight(200)
-        else:
-            self.input.setMaximumHeight(100)
-            self.input.setMinimumHeight(60)
+        """Update UI based on current mode - now only used for initialization"""
+        self.input.setMaximumHeight(100)
+        self.input.setMinimumHeight(60)
     
     def get_input(self) -> str:
         """Get input text"""
@@ -136,7 +131,7 @@ class FieldInputWidget(QWidget):
 
 class MessageExampleWidget(FieldInputWidget):
     """Specialized widget for message examples with append functionality"""
-    append_requested = pyqtSignal(FieldName, str)  # Request to append new example
+    append_requested = pyqtSignal(FieldName)  # Changed to not need context string
     
     def __init__(self, parent=None):
         super().__init__(FieldName.MES_EXAMPLE, parent)
@@ -146,25 +141,13 @@ class MessageExampleWidget(FieldInputWidget):
         """Add controls for appending examples"""
         append_layout = QHBoxLayout()
         
-        # Context input for new example
-        self.context_input = QTextEdit()
-        self.context_input.setPlaceholderText("Enter context for new example...")
-        self.context_input.setMaximumHeight(60)
-        append_layout.addWidget(self.context_input)
-        
         # Append button
-        append_btn = QPushButton("Add Example")
-        append_btn.clicked.connect(self._handle_append)
+        append_btn = QPushButton("Append More Examples")
+        append_btn.clicked.connect(lambda: self.append_requested.emit(self.field))
         append_layout.addWidget(append_btn)
         
         # Add to main layout
         self.layout().addLayout(append_layout)
-    
-    def _handle_append(self):
-        """Handle append example request"""
-        context = self.context_input.toPlainText()
-        self.append_requested.emit(self.field, context)
-        self.context_input.clear()
 
 class FirstMessageWidget(FieldInputWidget):
     """Specialized widget for first message with alternate greeting support"""
@@ -372,12 +355,10 @@ class AlternateGreetingsWidget(QWidget):
         self._update_display()
         
 class ExpandedFieldView(QWidget):
-    """Expanded view for focused fields"""
-    input_changed = pyqtSignal(str)  # Signal for input changes
-    output_changed = pyqtSignal(str)  # Signal for output changes
-    regen_requested = pyqtSignal()    # Signal for regeneration
-    regen_with_deps_requested = pyqtSignal()  # Signal for regeneration with deps
-    
+    input_changed = pyqtSignal(str)   
+    output_changed = pyqtSignal(str)   
+    regen_requested = pyqtSignal()
+    regen_with_deps_requested = pyqtSignal()
     def __init__(self, 
                  field: FieldName,
                  input_text: str = "",
@@ -387,13 +368,13 @@ class ExpandedFieldView(QWidget):
         self.field = field
         self._init_ui(input_text, output_text)
         self.setWindowTitle(f"Editing: {field.value}")
-        # Set a reasonable default size
         self.resize(800, 600)
-    
+        self.setWindowFlags(Qt.WindowType.Window)
+
     def _init_ui(self, input_text: str, output_text: str):
         layout = QVBoxLayout()
         
-        # Header
+        # Header (now without close button)
         header = QHBoxLayout()
         header.addWidget(QLabel(f"Editing: {self.field.value}"))
         
@@ -407,13 +388,6 @@ class ExpandedFieldView(QWidget):
         header.addWidget(regen_deps_btn)
         
         header.addStretch()
-        
-        # Close button
-        close_btn = QPushButton("×")
-        close_btn.setFixedWidth(30)
-        close_btn.clicked.connect(self.close)
-        header.addWidget(close_btn)
-        
         layout.addLayout(header)
         
         # Splitter for input/output
@@ -460,11 +434,17 @@ class ExpandedFieldView(QWidget):
         self.output_edit.setPlainText(text)
         self.output_edit.blockSignals(False)
 
+    def closeEvent(self, event):
+        """Handle window close event"""
+        # Notify parent of closure through the window system
+        self.parent().handle_view_closed(self.field) if self.parent() else None
+        event.accept()
+
 class FieldViewManager:
     """Manages expanded field views"""
     def __init__(self):
         self.active_views: Dict[FieldName, ExpandedFieldView] = {}
-    
+
     def toggle_field_focus(self, 
                           field: FieldName,
                           input_text: str = "",
@@ -474,11 +454,15 @@ class FieldViewManager:
                           regen_callback=None,
                           regen_deps_callback=None) -> None:
         """Toggle expanded view for a field"""
-        if field in self.active_views:
+        if field in self.active_views and self.active_views[field].isVisible():
             self.active_views[field].close()
-            del self.active_views[field]
+            self.active_views.pop(field)
         else:
+            # Create view without parent
             view = ExpandedFieldView(field, input_text, output_text)
+            
+            # Connect our own close handler
+            view.destroyed.connect(lambda: self.handle_view_closed(field))
             
             # Connect signals
             if input_widget:
@@ -499,6 +483,11 @@ class FieldViewManager:
             
             self.active_views[field] = view
             view.show()
+
+    def handle_view_closed(self, field: FieldName):
+        """Handle view closure from window system"""
+        if field in self.active_views:
+            self.active_views.pop(field)
     
     def close_all(self):
         """Close all expanded views"""

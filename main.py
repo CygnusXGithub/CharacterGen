@@ -163,7 +163,7 @@ def main():
     # Create application instance
     app = QApplication(sys.argv)
     app.setApplicationName("Character Generator")
-    app.setApplicationVersion("2.0.0")
+    app.setApplicationVersion("2.3.0")
     app.setOrganizationName("CharacterGen")
     
     # Set up logging
