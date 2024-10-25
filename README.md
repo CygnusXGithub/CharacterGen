@@ -44,7 +44,6 @@ CharacterGen is a Python-based application for creating and editing v2 character
 
 ## Installation
 
-### Dev branch has newer features but has broken in progress features, I recommend trying it rather than main, but read the ReadMe for what is not 100% working if you do.
 
 ### Prerequisites
 - Python 3.x
