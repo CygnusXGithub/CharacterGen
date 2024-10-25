@@ -466,7 +466,11 @@ class GenerationTab(QWidget):
             self.field_view_manager.toggle_field_focus(
                 field,
                 input_text=self.input_widgets[field].get_input(),
-                output_text=self.output_texts[field].toPlainText()
+                output_text=self.output_texts[field].toPlainText(),
+                input_widget=self.input_widgets[field],
+                output_widget=self.output_texts[field],
+                regen_callback=lambda: self._handle_single_regen(field),
+                regen_deps_callback=lambda: self._handle_regen_with_deps(field)
             )
         else:
             self.field_view_manager.toggle_field_focus(field)

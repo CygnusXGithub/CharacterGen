@@ -29,11 +29,18 @@ class BasePromptWidget(QWidget):
         # Field name label
         label = QLabel(f"Base Prompt for {self.field.value.title()}")
         header.addWidget(label)
+
+        # Add stretch to push order section to the right and create padding
+        header.addStretch()
         
-        # Generation order input
-        header.addWidget(QLabel("Generation Order:"))
-        self.order_input = QLineEdit()  # Changed from QSpinBox to QLineEdit
+        # Generation order section
+        order_label = QLabel("Generation Order:")
+        order_label.setContentsMargins(20, 0, 5, 0)  # Left padding of 20px, right padding of 5px
+        header.addWidget(order_label)
+        
+        self.order_input = QLineEdit()
         self.order_input.setPlaceholderText("Optional")
+        self.order_input.setFixedWidth(50)  # Constrain width to comfortably fit 2 digits
         self.order_input.textChanged.connect(
             lambda text: self._handle_order_change(text)
         )
@@ -60,21 +67,6 @@ class BasePromptWidget(QWidget):
             lambda: self._adjust_height()
         )
         layout.addWidget(self.prompt_edit)
-        
-        # Add a help section
-        help_frame = QFrame()
-        help_frame.setFrameStyle(QFrame.Shape.StyledPanel)
-        help_layout = QVBoxLayout(help_frame)
-        
-        help_label = QLabel("Available Fields:")
-        help_layout.addWidget(help_label)
-        
-        field_list = ", ".join(f"{{{{{f.value}}}}}" for f in FieldName)
-        fields_label = QLabel(field_list)
-        fields_label.setWordWrap(True)
-        help_layout.addWidget(fields_label)
-        
-        layout.addWidget(help_frame)
         
         self.setLayout(layout)
 

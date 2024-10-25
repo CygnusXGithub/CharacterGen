@@ -8,9 +8,6 @@ class FieldName(Enum):
     FIRST_MES = "first_mes"
     MES_EXAMPLE = "mes_example"
     PERSONALITY = "personality"
-    CREATOR_NOTES = "creator_notes"
-    SYSTEM_PROMPT = "system_prompt"
-    POST_HISTORY_INSTRUCTIONS = "post_history_instructions"
 
 class CardFormat(Enum):
     """Supported character card formats"""
