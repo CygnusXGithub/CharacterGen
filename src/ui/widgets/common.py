@@ -3,7 +3,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QFrame, QVBoxLayout, QHBoxLayout, 
     QPushButton, QLabel, QLineEdit, QComboBox,
-    QFileDialog, QMessageBox
+    QFileDialog, QMessageBox, QSizePolicy
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
@@ -156,11 +156,26 @@ class StatusBar(QWidget):
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self._init_ui()
+        # Set minimum and maximum height to ensure consistent size
+        self.setMinimumHeight(25)
+        self.setMaximumHeight(25)
+        # Set size policy to maintain height
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding,  # Horizontal policy
+            QSizePolicy.Policy.Fixed       # Vertical policy
+        )
     
     def _init_ui(self):
         layout = QHBoxLayout()
+        # Reduce margins to make it more compact
+        layout.setContentsMargins(5, 0, 5, 0)
+        layout.setSpacing(5)
         
         self.status_label = QLabel()
+        self.status_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred
+        )
         layout.addWidget(self.status_label)
         
         self.progress_label = QLabel()

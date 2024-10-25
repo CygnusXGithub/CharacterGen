@@ -3,7 +3,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QMessageBox, QFileDialog, QPushButton, QLabel,
-    QTextEdit, QComboBox
+    QTextEdit, QComboBox, QScrollArea, QSizePolicy
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
@@ -21,21 +21,21 @@ from ..widgets.field_widgets import (
 from ..widgets.common import LoadSaveWidget, DragDropFrame, StatusBar
 
 class GenerationTab(QWidget):
-    """Tab for character generation"""
-    
     def __init__(self, 
                  character_service: CharacterService,
                  generation_service: GenerationService,
                  parent=None):
         super().__init__(parent)
-        
         self.character_service = character_service
         self.generation_service = generation_service
         self.field_view_manager = FieldViewManager()
         self.current_character: Optional[CharacterData] = None
+        # Initialize dictionaries
+        self.input_widgets = {}
+        self.output_texts = {}
+        
         self._init_ui()
         self._connect_signals()
-        self.setAcceptDrops(True)  
         self._load_available_characters()
     
     def _init_ui(self):
@@ -68,11 +68,20 @@ class GenerationTab(QWidget):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         
         # Left side - Input fields
-        input_container = DragDropFrame()
-        input_layout = QVBoxLayout(input_container)
+        input_widget = QWidget()
+        input_layout = QVBoxLayout(input_widget)
+        input_layout.setSpacing(10)
         
-        # Create input widgets
-        self.input_widgets = {}
+        # Create scroll area for inputs
+        input_scroll = QScrollArea()
+        input_scroll.setWidgetResizable(True)
+        
+        # Create container for inputs
+        input_container = QWidget()
+        input_container_layout = QVBoxLayout(input_container)
+        input_container_layout.setSpacing(10)
+        
+        # Add input widgets to container
         for field in FieldName:
             if field == FieldName.MES_EXAMPLE:
                 widget = MessageExampleWidget()
@@ -82,43 +91,87 @@ class GenerationTab(QWidget):
                 widget = FieldInputWidget(field)
             
             self.input_widgets[field] = widget
-            input_layout.addWidget(widget)
+            input_container_layout.addWidget(widget)
         
-        # Add generation button
+        # Add buttons
         self.generate_btn = QPushButton("Generate All")
         self.generate_btn.clicked.connect(self._handle_generate_all)
-        input_layout.addWidget(self.generate_btn)
+        input_container_layout.addWidget(self.generate_btn)
         
-        # Add save button
         save_btn = QPushButton("Save Character")
         save_btn.clicked.connect(self._handle_save_character)
-        input_layout.addWidget(save_btn)
+        input_container_layout.addWidget(save_btn)
         
-        splitter.addWidget(input_container)
+        # Add stretch at the end
+        input_container_layout.addStretch()
+        
+        # Set scroll widget
+        input_scroll.setWidget(input_container)
+        input_layout.addWidget(input_scroll)
         
         # Right side - Output fields
+        output_widget = QWidget()
+        output_layout = QVBoxLayout(output_widget)
+        output_layout.setSpacing(10)
+        
+        # Create scroll area for outputs
+        output_scroll = QScrollArea()
+        output_scroll.setWidgetResizable(True)
+        
+        # Create container for outputs
         output_container = QWidget()
-        output_layout = QVBoxLayout(output_container)
+        output_container_layout = QVBoxLayout(output_container)
+        output_container_layout.setSpacing(10)
         
         # Create output text areas
         self.output_texts = {}
         for field in FieldName:
-            label = QLabel(f"{field.value.title()} Output:")
-            output_layout.addWidget(label)
+            # Create a container for each field
+            field_container = QWidget()
+            field_layout = QVBoxLayout(field_container)
+            field_layout.setContentsMargins(0, 0, 0, 0)
             
+            # Add label
+            label = QLabel(f"{field.value.title()} Output:")
+            field_layout.addWidget(label)
+            
+            # Add text edit
             text_edit = QTextEdit()
             text_edit.setAcceptRichText(False)
-            text_edit.textChanged.connect(
-                lambda field=field: self._handle_output_change(field)
+            text_edit.setMinimumHeight(100)
+            text_edit.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Minimum
+            )
+            text_edit.document().documentLayout().documentSizeChanged.connect(
+                self._create_height_adjuster(text_edit)
             )
             self.output_texts[field] = text_edit
-            output_layout.addWidget(text_edit)
+            field_layout.addWidget(text_edit)
+            
+            # Add field container to main container
+            output_container_layout.addWidget(field_container)
         
-        splitter.addWidget(output_container)
+        # Add stretch at the end
+        output_container_layout.addStretch()
+        
+        # Set scroll widget
+        output_scroll.setWidget(output_container)
+        output_layout.addWidget(output_scroll)
+        
+        # Add widgets to splitter
+        splitter.addWidget(input_widget)
+        splitter.addWidget(output_widget)
+        
+        # Set initial splitter sizes
+        splitter.setSizes([500, 500])
         
         layout.addWidget(splitter)
-        
-        # Add status bar
+        self.setLayout(layout)
+
+        layout.addWidget(splitter)
+    
+        # Add status bar at the bottom
         self.status_bar = StatusBar()
         layout.addWidget(self.status_bar)
         
@@ -148,6 +201,23 @@ class GenerationTab(QWidget):
             elif isinstance(widget, FirstMessageWidget):
                 widget.greeting_requested.connect(self._handle_new_greeting)
     
+    def _create_height_adjuster(self, text_edit: QTextEdit):
+        """Create a closure for height adjustment"""
+        def adjust():
+            # Calculate document height
+            doc_size = text_edit.document().size()
+            margins = text_edit.contentsMargins()
+            height = int(doc_size.height() + margins.top() + margins.bottom() + 10)
+            
+            # Set height with limits
+            text_edit.setMinimumHeight(min(max(100, height), 400))
+            
+            # Force parent widget to update layout
+            parent = text_edit.parent()
+            if parent:
+                parent.updateGeometry()
+        return adjust
+
     def _load_available_characters(self):
         """Load list of available characters"""
         try:

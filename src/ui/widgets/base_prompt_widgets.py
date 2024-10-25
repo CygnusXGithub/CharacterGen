@@ -2,7 +2,7 @@ from typing import Dict, Optional, List
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit,
     QLabel, QLineEdit, QSpinBox, QFrame,
-    QPushButton, QScrollArea, QMessageBox
+    QPushButton, QScrollArea, QMessageBox, QSizePolicy
 )
 from PyQt6.QtCore import pyqtSignal
 
@@ -51,11 +51,13 @@ class BasePromptWidget(QWidget):
             "{{if_input}}...{{/if_input}} - Conditional content"
         )
         self.prompt_edit.setAcceptRichText(False)
-        self.prompt_edit.textChanged.connect(
-            lambda: self.prompt_changed.emit(
-                self.field, 
-                self.prompt_edit.toPlainText()
-            )
+        self.prompt_edit.setMinimumHeight(100)
+        self.prompt_edit.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Minimum
+        )
+        self.prompt_edit.document().documentLayout().documentSizeChanged.connect(
+            lambda: self._adjust_height()
         )
         layout.addWidget(self.prompt_edit)
         
@@ -75,6 +77,13 @@ class BasePromptWidget(QWidget):
         layout.addWidget(help_frame)
         
         self.setLayout(layout)
+
+    def _adjust_height(self):
+        """Adjust height to fit content"""
+        doc_size = self.prompt_edit.document().size()
+        margins = self.prompt_edit.contentsMargins()
+        height = int(doc_size.height() + margins.top() + margins.bottom() + 10)
+        self.prompt_edit.setMinimumHeight(min(max(100, height), 400))
     
     def _handle_order_change(self, text: str):
         """Handle order input changes"""

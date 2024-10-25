@@ -57,9 +57,16 @@ class FieldInputWidget(QWidget):
         self.input = QTextEdit()
         self.input.setPlaceholderText(f"Enter {self.field.value}...")
         self.input.setAcceptRichText(False)
-        self.input.textChanged.connect(self._handle_input_change)
-        self.input.setMinimumHeight(60)
-        self.input.setMaximumHeight(100)
+        self.input.document().documentLayout().documentSizeChanged.connect(
+            lambda: self._adjust_height(self.input)
+        )
+        # Set minimum height
+        self.input.setMinimumHeight(100)
+        # Allow growing but start at minimum
+        self.input.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Minimum
+        )
         input_layout.addWidget(self.input)
         
         # Generation buttons
@@ -119,6 +126,13 @@ class FieldInputWidget(QWidget):
     def set_input(self, text: str):
         """Set input text"""
         self.input.setPlainText(text)
+
+    def _adjust_height(self, text_edit: QTextEdit):
+        """Adjust height to fit content with minimum height"""
+        doc_size = text_edit.document().size()
+        margins = text_edit.contentsMargins()
+        height = int(doc_size.height() + margins.top() + margins.bottom() + 10)
+        text_edit.setMinimumHeight(min(max(100, height), 400))
 
 class MessageExampleWidget(FieldInputWidget):
     """Specialized widget for message examples with append functionality"""
