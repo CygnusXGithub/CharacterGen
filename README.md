@@ -17,6 +17,8 @@ CharacterGen is a Python-based application for creating and editing v2 character
   - Save and load different prompt sets
   - Conditional content based on user input
   - Context-aware field references
+- **Ease Of Use**:
+  - - Field focus, a way to expand a field or multiple that you are working on to a much larger text area.
  
   ## Base Prompt Tab
   ![BasePrompts](/images/basePrompt.png)
@@ -25,7 +27,7 @@ CharacterGen is a Python-based application for creating and editing v2 character
   ![GenTab](/images/GenTab.png)
 
 ## Planned Features
-  - Field focus, a way to expand a field or multiple that you are working on to a much larger text area. (in progress)
+   (in progress)
   - Editing of the other fields making up a v2 card such as creator, version, tags etc.
   - adding more conditional tags such as {{if_no_input}}
   - Ability to generate/save mutliple first messages with one as the main first message and the rest going into alternate greetings. Ideally when considered along with saving user prompts, each greeting would save the prompts used to generate it, being able to switch which you are working on and loading both the Message and the prompt. (in progress)
@@ -38,13 +40,9 @@ CharacterGen is a Python-based application for creating and editing v2 character
 
 ## Installation
 
-### Dev branch has newer features but has broken in progress features
   - broken features, don't use
-    - Field mag 🔎 Does not save to output when using
     - Add alternate greeting, not hooked up right and wont save
     - add example on mes_example, works, but it may not use the new input
-    - Fields that are not the following do not work really: Name, description, scenario, first_mes, Mes_example, personality.
-      - the others like creator notes will be removed from the generation tab soon to their own tab
 
 ### Prerequisites
 - Python 3.x
