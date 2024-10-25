@@ -66,7 +66,7 @@ class MainWindow(QMainWindow):
     
     def _init_services(self):
         """Initialize all services"""
-        self.api_service = ApiService(self.config.api)
+        self.api_service = ApiService(self.config)
         self.character_service = CharacterService(self.config.paths)
         self.prompt_service = PromptService(self.config.paths)
         self.generation_service = GenerationService(
@@ -144,24 +144,37 @@ class MainWindow(QMainWindow):
             current_tab._handle_save_character()
     
     def _handle_preferences(self):
-        """Handle preferences request"""
-        # TODO: Implement preferences dialog
-        QMessageBox.information(
-            self,
-            "Preferences",
-            "Preferences dialog coming soon!"
+        """Handle preferences dialog"""
+        from .dialogs.preferences_dialog import PreferencesDialog
+        
+        dialog = PreferencesDialog(self)
+        dialog.settings_updated.connect(self._handle_settings_updated)
+        dialog.exec()
+
+    def _handle_settings_updated(self):
+        """Handle when settings are updated"""
+        # Reload configuration
+        self.config = get_config()
+        
+        # Update services with new configuration
+        self.api_service = ApiService(self.config)  # Pass entire config
+        self.generation_service = GenerationService(
+            self.api_service,
+            self.prompt_service
         )
+        
+        # Update UI components if needed
+        if hasattr(self, 'generation_tab'):
+            self.generation_tab.generation_service = self.generation_service
+        
+        # Update UI components if needed
+        if hasattr(self, 'generation_tab'):
+            self.generation_tab.generation_service = self.generation_service
     
     def _handle_about(self):
         """Handle about request"""
         dialog = AboutDialog(self)
         dialog.exec()
-
-    # Removed so as to not auto swap tabs on Prompt load
-    # def _handle_prompt_set_loaded(self, prompt_set):
-    #     """Handle when a prompt set is loaded"""
-    #     # Switch to generation tab when prompts are loaded
-    #     self.tabs.setCurrentWidget(self.generation_tab)
     
     def _load_settings(self):
         """Load application settings"""

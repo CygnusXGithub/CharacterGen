@@ -4,6 +4,12 @@ from pathlib import Path
 import yaml
 from .exceptions import InvalidConfigError, ConfigError
 
+from dataclasses import dataclass, field
+from typing import Dict, Any, Optional
+from pathlib import Path
+import yaml
+from .exceptions import InvalidConfigError, ConfigError
+
 @dataclass
 class ApiConfig:
     """API-related configuration"""
@@ -13,10 +19,45 @@ class ApiConfig:
     max_retries: int = 3
     retry_delay: int = 1
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for saving"""
+        return {
+            'API_URL': self.url,
+            'API_KEY': self.key,
+            'timeout': self.timeout,
+            'max_retries': self.max_retries,
+            'retry_delay': self.retry_delay
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ApiConfig':
+        """Create instance from dictionary"""
+        return cls(
+            url=data.get('API_URL', ''),
+            key=data.get('API_KEY'),
+            timeout=data.get('timeout', 420),
+            max_retries=data.get('max_retries', 3),
+            retry_delay=data.get('retry_delay', 1)
+        )
+
 @dataclass
 class GenerationConfig:
     """Generation-related settings"""
     max_tokens: int = 2048
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for saving"""
+        return {
+            'max_tokens': self.max_tokens,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'GenerationConfig':
+        """Create instance from dictionary"""
+        return cls(
+            max_tokens=data.get('max_tokens', 2048),
+        )
+
 
 @dataclass
 class PathConfig:
@@ -41,12 +82,30 @@ class PathConfig:
             directory.mkdir(parents=True, exist_ok=True)
 
 @dataclass
+class UserConfig:
+    """User-related settings"""
+    creator_name: str = "Anonymous"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for saving"""
+        return {
+            'creator_name': self.creator_name
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'UserConfig':
+        """Create instance from dictionary"""
+        return cls(
+            creator_name=data.get('creator_name', 'Anonymous')
+        )
+
+@dataclass
 class AppConfig:
     """Main application configuration"""
     api: ApiConfig
     generation: GenerationConfig
+    user: UserConfig
     paths: PathConfig
-    templates: Dict[str, Any] = field(default_factory=dict)
     
     @classmethod
     def load(cls, config_path: Path) -> 'AppConfig':
@@ -55,35 +114,21 @@ class AppConfig:
             with open(config_path, 'r') as f:
                 data = yaml.safe_load(f)
             
-            # Parse API configuration
-            api_config = ApiConfig(
-                url=data.get('API_URL', ''),
-                key=data.get('API_KEY'),
-            )
-            
-            # Parse generation settings
+            # Parse configurations
+            api_config = ApiConfig.from_dict(data)
             gen_data = data.get('generation', {})
-            gen_config = GenerationConfig(
-                max_tokens=gen_data.get('max_tokens', 2048),
-            )
+            gen_config = GenerationConfig.from_dict(gen_data)
+            user_data = data.get('user', {})
+            user_config = UserConfig.from_dict(user_data)
             
             # Set up paths
-            base_dir = Path(data.get('base_dir', Path.cwd()))
-            path_config = PathConfig(base_dir=base_dir)
-            
-            # Load templates
-            template_path = path_config.config_dir / "template.json"
-            templates = {}
-            if template_path.exists():
-                with open(template_path, 'r') as f:
-                    import json
-                    templates = json.load(f)
+            path_config = PathConfig(base_dir=Path(data.get('base_dir', Path.cwd())))
             
             return cls(
                 api=api_config,
                 generation=gen_config,
-                paths=path_config,
-                templates=templates
+                user=user_config,
+                paths=path_config
             )
             
         except yaml.YAMLError as e:
@@ -95,11 +140,9 @@ class AppConfig:
         """Save current configuration to YAML file"""
         try:
             config_data = {
-                'API_URL': self.api.url,
-                'API_KEY': self.api.key,
-                'generation': {
-                    'max_tokens': self.generation.max_tokens,
-                },
+                **self.api.to_dict(),
+                'generation': self.generation.to_dict(),
+                'user': self.user.to_dict(),
                 'base_dir': str(self.paths.base_dir)
             }
             
@@ -108,23 +151,7 @@ class AppConfig:
                 
         except Exception as e:
             raise ConfigError(f"Error saving configuration: {str(e)}")
-    
-    def validate(self) -> bool:
-        """Validate configuration"""
-        if not self.api.url:
-            raise InvalidConfigError("API URL is required")
-        
-        if not self.paths.base_dir.exists():
-            raise InvalidConfigError(f"Base directory does not exist: {self.paths.base_dir}")
-        
-        if not 0 <= self.generation.temperature <= 1:
-            raise InvalidConfigError("Temperature must be between 0 and 1")
-        
-        if not 0 <= self.generation.top_p <= 1:
-            raise InvalidConfigError("Top P must be between 0 and 1")
-        
-        return True
-
+            
 # Global configuration instance
 _config: Optional[AppConfig] = None
 

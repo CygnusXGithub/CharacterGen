@@ -120,8 +120,14 @@ def check_config() -> bool:
             default_config = {
                 "API_URL": "http://127.0.0.1:5000/v1/chat/completions",
                 "API_KEY": "",
+                "timeout": 420,
+                "max_retries": 3,
+                "retry_delay": 1,
                 "generation": {
                     "max_tokens": 2048,
+                },
+                "user": {
+                    "creator_name": "Anonymous"
                 }
             }
             
@@ -132,10 +138,9 @@ def check_config() -> bool:
             QMessageBox.information(
                 None,
                 "Configuration Created",
-                f"Default configuration file created at {config_path}\n"
-                "Please edit it with your API settings before continuing."
+                f"Default configuration file created\n"
+                "Please edit it within Edit->Preferences before Generating."
             )
-            return False
             
         except Exception as e:
             QMessageBox.critical(

@@ -1,5 +1,10 @@
-# ------- API configuration ------- #
-## For Atleast Ooba and KoboldCCP the below URL should work. The important part is /v1/chat/completions. If you use a different URL or Port please change that info.
-API_URL: "http://127.0.0.1:5000/v1/chat/completions"
-# If you do not use an API Key, leave blank Ex. API_KEY: ""
-API_KEY: "2112"
+API_KEY: '2112'
+API_URL: http://127.0.0.1:5000/v1/chat/completions
+base_dir: C:\Users\Cygnus\Documents\GitHub\CharacterGen
+generation:
+  max_tokens: 2048
+max_retries: 3
+retry_delay: 1
+timeout: 420
+user:
+  creator_name: Anonymous

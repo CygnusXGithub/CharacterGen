@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 
-from ..core.config import ApiConfig
+from ..core.config import ApiConfig, AppConfig
 from ..core.exceptions import ApiError, ApiTimeoutError, ApiResponseError
 
 @dataclass
@@ -18,9 +18,8 @@ class ApiResponse:
 class ApiService:
     """Handles communication with the language model API"""
     
-    def __init__(self, config: ApiConfig):
+    def __init__(self, config: AppConfig):
         self.config = config
-        self._last_response: Optional[ApiResponse] = None
     
     def _prepare_payload(self, prompt: str, **kwargs) -> Dict[str, Any]:
         """Prepare the API request payload"""
@@ -32,11 +31,7 @@ class ApiService:
                 }
             ],
             "mode": "instruct",
-            "max_tokens": kwargs.get('max_tokens', 2048),
-            "temperature": kwargs.get('temperature', 0.7),
-            "top_p": kwargs.get('top_p', 0.9),
-            "presence_penalty": kwargs.get('presence_penalty', 0.0),
-            "frequency_penalty": kwargs.get('frequency_penalty', 0.0),
+            "max_tokens": kwargs.get('max_tokens', self.config.generation.max_tokens)
         }
     
     def _prepare_headers(self) -> Dict[str, str]:
@@ -45,8 +40,8 @@ class ApiService:
             "Content-Type": "application/json"
         }
         
-        if self.config.key:
-            headers["Authorization"] = f"Bearer {self.config.key}"
+        if self.config.api.key:
+            headers["Authorization"] = f"Bearer {self.config.api.key}"
             
         return headers
     
@@ -57,15 +52,15 @@ class ApiService:
         
         try:
             response = requests.post(
-                self.config.url,
+                self.config.api.url,
                 json=payload,
                 headers=headers,
-                timeout=self.config.timeout
+                timeout=self.config.api.timeout
             )
             
             if response.status_code == 429:  # Rate limit
-                if attempt < self.config.max_retries:
-                    time.sleep(self.config.retry_delay * attempt)
+                if attempt < self.config.api.max_retries:
+                    time.sleep(self.config.api.retry_delay * attempt)
                     return self._make_request(prompt, attempt + 1, **kwargs)
                 raise ApiError("Rate limit exceeded and max retries reached")
                 
@@ -85,14 +80,14 @@ class ApiService:
             return api_response
             
         except requests.Timeout:
-            if attempt < self.config.max_retries:
-                time.sleep(self.config.retry_delay * attempt)
+            if attempt < self.config.api.max_retries:
+                time.sleep(self.config.api.retry_delay * attempt)
                 return self._make_request(prompt, attempt + 1, **kwargs)
             raise ApiTimeoutError("Request timed out after all retries")
             
         except requests.RequestException as e:
-            if attempt < self.config.max_retries:
-                time.sleep(self.config.retry_delay * attempt)
+            if attempt < self.config.api.max_retries:
+                time.sleep(self.config.api.retry_delay * attempt)
                 return self._make_request(prompt, attempt + 1, **kwargs)
             raise ApiResponseError(
                 getattr(e.response, 'status_code', 0),
