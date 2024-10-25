@@ -21,12 +21,14 @@ CharacterGen is a Python-based application for creating and editing v2 character
   - Context-aware field references
 - **Intelligent Context Generation**: Uses a tag-based system for precise context placement
 - **Flexible Generation Order**: Customizable field generation sequence with dependency handling
- 
-  ## Base Prompt Tab
-  ![BasePrompts](/images/basePrompt.png)
 
-   ## Generation Tab
-  ![GenTab](/images/GenTab.png)
+## Generation Tab
+![GenTab](/images/GenTab.png)
+  
+## Base Prompt Tab
+![BasePrompts](/images/basePrompt.png)
+
+   
 
 ## Planned Features
    (in progress)
