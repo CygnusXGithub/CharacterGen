@@ -27,7 +27,7 @@ class AboutDialog(QDialog):
         # Add version info
         layout.addWidget(QLabel("Character Generator"))
         layout.addWidget(QLabel("Version 2.0.0"))
-        layout.addWidget(QLabel(""))
+        layout.addWidget(QLabel("Created By Cygnus"))
         
         # Add description
         desc = QLabel(
