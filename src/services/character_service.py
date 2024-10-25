@@ -90,7 +90,7 @@ class CharacterService:
         
         try:
             if file_path.suffix.lower() == '.json':
-                with open(file_path, 'r') as f:
+                with open(file_path, 'r', encoding='utf-8') as f:  # Added encoding
                     data = json.load(f)
                 return CharacterData.from_dict(data)
             else:
@@ -113,14 +113,17 @@ class CharacterService:
         base_name = data.name
         if mode == SaveMode.VERSIONED:
             base_name = f"{data.name}_v{data.version}"
-            
+                
         file_path = self.path_config.characters_dir / base_name
         
         try:
             if format == CardFormat.JSON:
                 file_path = file_path.with_suffix('.json')
+                # Convert to dictionary including alternate greetings
+                char_data = data.to_dict()
+                
                 with open(file_path, 'w') as f:
-                    json.dump(data.to_dict(), f, indent=2)
+                    json.dump(char_data, f, indent=2)
             else:
                 file_path = file_path.with_suffix('.png')
                 png_data = self._create_png_card(data, data.image_data)
@@ -128,7 +131,7 @@ class CharacterService:
                     f.write(png_data)
             
             return file_path
-            
+                
         except Exception as e:
             raise CharacterSaveError(f"Failed to save character: {str(e)}")
     

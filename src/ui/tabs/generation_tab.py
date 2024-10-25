@@ -16,7 +16,7 @@ from ...services.character_service import CharacterService
 from ...services.generation_service import GenerationService
 from ..widgets.field_widgets import (
     FieldInputWidget, MessageExampleWidget,
-    FirstMessageWidget, FieldViewManager
+    FirstMessageWidget, FieldViewManager,AlternateGreetingsWidget
 )
 from ..widgets.common import LoadSaveWidget, DragDropFrame, StatusBar
 
@@ -61,8 +61,10 @@ class GenerationTab(QWidget):
         self.image_btn = QPushButton("Add Image")
         self.image_btn.clicked.connect(self._handle_image_selection)
         mgmt_layout.addWidget(self.image_btn)
-        
+
         layout.addLayout(mgmt_layout)
+
+        # ---------- End Management Controls ---------- #
         
         # Create main splitter
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -109,6 +111,8 @@ class GenerationTab(QWidget):
         input_scroll.setWidget(input_container)
         input_layout.addWidget(input_scroll)
         
+        # ------------ End Input Fields ------------- #
+
         # Right side - Output fields
         output_widget = QWidget()
         output_layout = QVBoxLayout(output_widget)
@@ -123,8 +127,7 @@ class GenerationTab(QWidget):
         output_container_layout = QVBoxLayout(output_container)
         output_container_layout.setSpacing(10)
         
-        # Create output text areas
-        self.output_texts = {}
+
         for field in FieldName:
             # Create a container for each field
             field_container = QWidget()
@@ -149,15 +152,32 @@ class GenerationTab(QWidget):
             self.output_texts[field] = text_edit
             field_layout.addWidget(text_edit)
             
-            # Add field container to main container
             output_container_layout.addWidget(field_container)
-        
+            
+            # Add alternate greetings widget immediately after first_mes
+            if field == FieldName.FIRST_MES:
+                self.alt_greetings_widget = AlternateGreetingsWidget()
+                # Set the widget to match field container's layout
+                self.alt_greetings_widget.setContentsMargins(0, 0, 0, 0)
+                self.alt_greetings_widget.setSizePolicy(
+                    QSizePolicy.Policy.Expanding,
+                    QSizePolicy.Policy.Minimum
+                )
+                self.alt_greetings_widget.greeting_added.connect(
+                    lambda: self._handle_new_greeting(FieldName.FIRST_MES)
+                )
+                self.alt_greetings_widget.greeting_deleted.connect(self._handle_greeting_deleted)
+                self.alt_greetings_widget.greeting_regenerated.connect(self._handle_greeting_regenerated)
+                output_container_layout.addWidget(self.alt_greetings_widget)
+
         # Add stretch at the end
         output_container_layout.addStretch()
         
         # Set scroll widget
         output_scroll.setWidget(output_container)
         output_layout.addWidget(output_scroll)
+
+        # ------------ End Output Fields ------------- #
         
         # Add widgets to splitter
         splitter.addWidget(input_widget)
@@ -223,6 +243,7 @@ class GenerationTab(QWidget):
         try:
             characters = self.character_service.list_characters()
             self.load_save.update_items(characters)
+            
         except CharacterLoadError as e:
             QMessageBox.warning(
                 self,
@@ -234,12 +255,18 @@ class GenerationTab(QWidget):
         """Handle loading of a character"""
         if not name:
             return
-            
+                
         try:
             self.current_character = self.character_service.load(name)
             
             # Update UI
             self._update_output_displays(self.current_character.fields)
+            
+            # Load alternate greetings
+            if self.current_character.alternate_greetings:
+                self.alt_greetings_widget.set_greetings(self.current_character.alternate_greetings)
+            else:
+                self.alt_greetings_widget.set_greetings([])  # Clear if no greetings
             
             self.status_bar.set_status(f"Loaded character: {name}")
             
@@ -269,11 +296,14 @@ class GenerationTab(QWidget):
                 self.current_character = self.character_service.create_character(name)
             
             # Update character name
-            self.current_character.name = name  # Add this line to ensure name is set
+            self.current_character.name = name
             
             # Update fields
             for field, text_edit in self.output_texts.items():
                 self.current_character.fields[field] = text_edit.toPlainText()
+            
+            # Update alternate greetings
+            self.current_character.alternate_greetings = self.alt_greetings_widget.greetings
             
             # Save character
             format = CardFormat(self.format_selector.currentText())
@@ -413,24 +443,43 @@ class GenerationTab(QWidget):
                 f"Error during generation: {str(e)}"
             )
     
-    def _handle_append_example(self, field: FieldName, context: str):
+    def _handle_append_example(self, field: FieldName):
         """Handle appending a new message example"""
         try:
             if not self.current_character:
                 raise GenerationError("No character loaded")
             
-            new_example = self.generation_service.append_message_example(
-                self.current_character,
-                context,
-                self._create_callbacks()
+            # Get current output text
+            current_text = self.output_texts[FieldName.MES_EXAMPLE].toPlainText()
+            
+            # Use current prompt input for generation
+            input_text = self.input_widgets[FieldName.MES_EXAMPLE].get_input()
+            
+            # Create specialized callbacks that won't overwrite existing text
+            callbacks = GenerationCallbacks(
+                on_start=lambda field: self.status_bar.set_status(
+                    "Generating additional examples..."
+                ),
+                on_progress=None,  # Don't update the main field
+                on_result=None,    # We'll handle the result manually
+                on_error=lambda field, error: self._handle_generation_error(
+                    field, error
+                )
             )
             
-            # Append to existing examples
-            current_text = self.output_texts[FieldName.MES_EXAMPLE].toPlainText()
-            updated_text = (current_text + "\n\n" + new_example 
-                          if current_text else new_example)
-            self.output_texts[FieldName.MES_EXAMPLE].setPlainText(updated_text)
+            new_example = self.generation_service.append_message_example(
+                self.current_character,
+                input_text,
+                callbacks
+            )
             
+            if new_example:
+                # Append to existing examples
+                updated_text = (current_text + "\n\n" + new_example 
+                            if current_text.strip() else new_example)
+                self.output_texts[FieldName.MES_EXAMPLE].setPlainText(updated_text)
+                self.status_bar.set_status("Appended new message example")
+                
         except Exception as e:
             QMessageBox.warning(
                 self,
@@ -444,20 +493,92 @@ class GenerationTab(QWidget):
             if not self.current_character:
                 raise GenerationError("No character loaded")
             
+            # Create callbacks that won't affect the main first_mes field
+            callbacks = GenerationCallbacks(
+                on_start=lambda field: self.status_bar.set_status(
+                    f"Generating alternate greeting..."
+                ),
+                on_progress=None,  # Don't update any fields
+                on_result=lambda field, result: self.alt_greetings_widget.add_greeting(
+                    result.content
+                ) if not result.error else None,
+                on_error=lambda field, error: self._handle_generation_error(
+                    field, error
+                )
+            )
+            
             new_greeting = self.generation_service.generate_alternate_greeting(
                 self.current_character,
-                self._create_callbacks()
+                callbacks
             )
             
             if new_greeting:
-                self.current_character.alternate_greetings.append(new_greeting)
                 self.status_bar.set_status("Added new alternate greeting")
+    
             
         except Exception as e:
             QMessageBox.warning(
                 self,
                 "Generation Error",
                 f"Error generating alternate greeting: {str(e)}"
+            )
+    
+    def _handle_greeting_deleted(self, index: int):
+        """Handle deletion of an alternate greeting"""
+        if self.current_character and hasattr(self.current_character, 'alternate_greetings'):
+            if 0 <= index < len(self.current_character.alternate_greetings):
+                self.current_character.alternate_greetings.pop(index)
+                self.status_bar.set_status("Deleted alternate greeting")
+
+    def _handle_greeting_regenerated(self, index: int):
+        """Handle regeneration of a specific alternate greeting"""
+        try:
+            if not self.current_character:
+                raise GenerationError("No character loaded")
+            
+            # Initialize alternate_greetings if it doesn't exist
+            if not hasattr(self.current_character, 'alternate_greetings'):
+                self.current_character.alternate_greetings = []
+            
+            # Check if the index is valid in the widget's greetings list
+            if not self.alt_greetings_widget.greetings or \
+            index >= len(self.alt_greetings_widget.greetings):
+                raise GenerationError("Invalid greeting index")
+            
+            # Create specialized callbacks that won't affect the main first_mes field
+            callbacks = GenerationCallbacks(
+                on_start=lambda field: self.status_bar.set_status(
+                    "Regenerating alternate greeting..."
+                ),
+                on_progress=None,  # Don't update any fields
+                on_result=None,    # Don't update any fields
+                on_error=lambda field, error: self._handle_generation_error(
+                    field, error
+                )
+            )
+            
+            # Use the same generation logic as new greeting
+            new_greeting = self.generation_service.generate_alternate_greeting(
+                self.current_character,
+                callbacks
+            )
+            
+            if new_greeting:
+                # Update only the alternate greeting lists
+                if index >= len(self.current_character.alternate_greetings):
+                    self.current_character.alternate_greetings.extend(
+                        [''] * (index - len(self.current_character.alternate_greetings) + 1)
+                    )
+                self.current_character.alternate_greetings[index] = new_greeting
+                self.alt_greetings_widget.greetings[index] = new_greeting
+                self.alt_greetings_widget._update_display()
+                self.status_bar.set_status("Regenerated alternate greeting")
+                
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Generation Error",
+                f"Error regenerating greeting: {str(e)}"
             )
     
     def _handle_field_focus(self, field: FieldName, focused: bool):

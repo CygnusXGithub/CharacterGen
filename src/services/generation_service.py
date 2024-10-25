@@ -134,27 +134,40 @@ class GenerationService:
         return results
     
     def generate_alternate_greeting(self, 
-                                  character: CharacterData,
-                                  callbacks: Optional[GenerationCallbacks] = None) -> str:
+                                character: CharacterData,
+                                callbacks: Optional[GenerationCallbacks] = None) -> str:
         """Generate an alternate greeting"""
         if FieldName.FIRST_MES not in self.prompt_service.current_set.templates:
             raise GenerationError("No template found for first message")
         
-        context = GenerationContext(
-            character_data=character,
-            current_field=FieldName.FIRST_MES,
-            user_input="Generate an alternate greeting",
-            generation_mode=GenerationMode.GENERATE
-        )
-        
-        if callbacks and callbacks.on_start:
-            callbacks.on_start(FieldName.FIRST_MES)
-        
         try:
-            result = self.generate_field(context)
+            # Create a copy of character data to avoid modifying the original
+            temp_context = GenerationContext(
+                character_data=character,
+                current_field=FieldName.FIRST_MES,
+                user_input="Generate an alternate greeting",
+                generation_mode=GenerationMode.GENERATE
+            )
+            
+            if callbacks and callbacks.on_start:
+                callbacks.on_start(FieldName.FIRST_MES)
+            
+            # Generate new greeting without updating character's first_mes
+            result = self.generate_field(temp_context)
+            
             if callbacks and callbacks.on_result:
-                callbacks.on_result(FieldName.FIRST_MES, result)
+                # Modify callback to handle alternate greeting separately
+                alt_result = GenerationResult(
+                    field=FieldName.FIRST_MES,
+                    content=result.content,
+                    timestamp=result.timestamp,
+                    attempts=result.attempts,
+                    error=result.error
+                )
+                callbacks.on_result(FieldName.FIRST_MES, alt_result)
+                
             return result.content
+            
         except Exception as e:
             if callbacks and callbacks.on_error:
                 callbacks.on_error(FieldName.FIRST_MES, e)

@@ -26,7 +26,7 @@ class AboutDialog(QDialog):
         
         # Add version info
         layout.addWidget(QLabel("Character Generator"))
-        layout.addWidget(QLabel("Version 2.0.0"))
+        layout.addWidget(QLabel("Version 2.3.0"))
         layout.addWidget(QLabel("Created By Cygnus"))
         
         # Add description
@@ -95,9 +95,8 @@ class MainWindow(QMainWindow):
         # Set central widget
         self.setCentralWidget(self.tabs)
 
-        # Removed so as to not auto swap tabs on Prompt load
-        # # Connect tab signals
-        # self.base_prompts_tab.prompt_set_loaded.connect(self._handle_prompt_set_loaded)
+        # Set initial tab to Generation
+        self.tabs.setCurrentIndex(1)
     
     def _create_menus(self):
         """Create application menus"""
