@@ -39,6 +39,12 @@ CharacterGen is a Python-based application for creating and editing v2 character
 ## Installation
 
 ### Dev branch has newer features but has broken in progress features
+  - broken features, don't use
+    - Field mag 🔎 Does not save to output when using
+    - Add alternate greeting, not hooked up right and wont save
+    - add example on mes_example, works, but it may not use the new input
+    - Fields that are not the following do not work really: Name, description, scenario, first_mes, Mes_example, personality.
+      - the others like creator notes will be removed from the generation tab soon to their own tab
 
 ### Prerequisites
 - Python 3.x
