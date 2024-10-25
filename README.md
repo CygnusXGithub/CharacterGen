@@ -1,8 +1,6 @@
 # CharacterGen
-
-An AI-powered character card generator and editor with intelligent context handling and cascading regeneration capabilities.
-
 ## Overview
+An AI-powered character card generator and editor with intelligent context handling and cascading regeneration capabilities.
 
 CharacterGen is a Python-based application for creating and editing v2 character cards. It uses a prompt system that combines base prompts with user input and contextual information to generate character attributes in a customizable order.
 
@@ -11,7 +9,7 @@ CharacterGen is a Python-based application for creating and editing v2 character
 - **Intelligent Context Generation**: Uses a tag-based system for precise context placement
 - **Flexible Generation Order**: Customizable field generation sequence with dependency handling
 - **Character Management**:
-  - Load and save character cards in JSON format
+  - Load and save character cards in JSON or PNG format
   - Edit generated outputs
   - Single field regeneration
   - Cascading regeneration for dependent fields
@@ -26,18 +24,11 @@ CharacterGen is a Python-based application for creating and editing v2 character
    ## Generation Tab
   ![GenTab](/images/GenTab.png)
 
-## TODO
-  - update ReadMe
-
 ## Planned Features
-  - Loading png cards
-  - Adding png pictures to the character and saving as either png or JSON
-  - Field focus, a way to expand a field or multiple that you are working on to a much larger text area.
+  - Field focus, a way to expand a field or multiple that you are working on to a much larger text area. (in progress)
   - Editing of the other fields making up a v2 card such as creator, version, tags etc.
   - adding more conditional tags such as {{if_no_input}}
-  - New character button that quickly clears out the text fields.
-  - Ability to generate/save mutliple first messages with one as the main first message and the rest going into alternate greetings. Ideally when considered along with saving user prompts, each greeting would save the prompts used to generate it, being able to switch which you are working on and loading both the Message and the prompt.
-  - Generate and append button for Mes_examples to create a longer list of examples easily.
+  - Ability to generate/save mutliple first messages with one as the main first message and the rest going into alternate greetings. Ideally when considered along with saving user prompts, each greeting would save the prompts used to generate it, being able to switch which you are working on and loading both the Message and the prompt. (in progress)
   - Configuration tab to pass some simple generation perameters like max tokens, as well as be a place to include other configuration options.
   - Saving the user prompts into the card to be repopulated when loading a card, this could also be done with the basePrompts used for generating that card.
   - AICharED made by Zoltan, AVA, and Neptune has alot of nice features that I like but may never get around to adding them. I would enjoy implementing their better UI formatting, and maybe QoL features such as:
@@ -49,10 +40,6 @@ CharacterGen is a Python-based application for creating and editing v2 character
 
 ### Prerequisites
 - Python 3.x
-- Required packages (install via pip):
-  ```bash
-  pip install PyQt6 requests pyyaml
-  ```
 
 ### Setup
 1. Clone the repository:
@@ -60,22 +47,20 @@ CharacterGen is a Python-based application for creating and editing v2 character
    git clone https://github.com/yourusername/CharacterGen.git
    cd CharacterGen
    ```
-2. Configure the API settings in `config.yaml`. For atleast Ooba and KoboldCCP don't forget the /v1/chat/completions:
+2. Configure the API settings in `config.yaml`. For atleast Ooba and KoboldCCP don't forget the /v1/chat/completions, the default should work for most people:
    ```yaml
    API_URL: "http://127.0.0.1:5000/v1/chat/completions"
    API_KEY: "YOUR_API_KEY"
    ```
 3. Run the application:
-   ```bash
-   python character_gen.py
-   # Or use the provided start.bat on Windows
-   ```
+   - Use start.bat
+     - This creats a virtual env, and gets prerequisites 
 
 ## Usage
 
 ### Base Prompts Tab
 
-The Base Prompts tab is where you configure the generation templates for each character field.
+The Base Prompts tab is where you configure the generation templates for each character field. Current default prompt does not include generating personality field.
 
 #### Available Tags
 - Basic Field Tags:
@@ -101,14 +86,15 @@ The Base Prompts tab is where you configure the generation templates for each ch
 #### Generation Order
 - Set the order by numbering fields (1-6)
 - Only reference tags from fields that come earlier in the generation order
-- Fields without base prompts are skipped during generation
+- Fields without an order number are skipped during generation
 
 ### Generation Tab
 
 #### Character Management
 - Load/save characters using the top controls
-- Character files are stored in the `characters` folder
+- Character files are stored in the `data/characters` folder
 - Save completed characters using the "Save Character" button
+- To save as PNG make sure to load a picture first, otherwise a default is used
 
 #### Field Generation
 - **Name Field**: Toggle between direct input and generated name
@@ -123,6 +109,3 @@ The Base Prompts tab is where you configure the generation templates for each ch
 - Use conditional tags to handle optional input gracefully
 - Set generation order to build context progressively
 - Use cascading regeneration to maintain consistency
-
-
-
