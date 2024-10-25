@@ -9,7 +9,7 @@ class ApiConfig:
     """API-related configuration"""
     url: str
     key: Optional[str] = None
-    timeout: int = 60
+    timeout: int = 420
     max_retries: int = 3
     retry_delay: int = 1
 
@@ -99,10 +99,6 @@ class AppConfig:
                 'API_KEY': self.api.key,
                 'generation': {
                     'max_tokens': self.generation.max_tokens,
-                    'temperature': self.generation.temperature,
-                    'top_p': self.generation.top_p,
-                    'presence_penalty': self.generation.presence_penalty,
-                    'frequency_penalty': self.generation.frequency_penalty
                 },
                 'base_dir': str(self.paths.base_dir)
             }

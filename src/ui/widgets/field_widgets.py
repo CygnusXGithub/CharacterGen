@@ -190,6 +190,11 @@ class FirstMessageWidget(FieldInputWidget):
 
 class ExpandedFieldView(QWidget):
     """Expanded view for focused fields"""
+    input_changed = pyqtSignal(str)  # Signal for input changes
+    output_changed = pyqtSignal(str)  # Signal for output changes
+    regen_requested = pyqtSignal()    # Signal for regeneration
+    regen_with_deps_requested = pyqtSignal()  # Signal for regeneration with deps
+    
     def __init__(self, 
                  field: FieldName,
                  input_text: str = "",
@@ -198,6 +203,9 @@ class ExpandedFieldView(QWidget):
         super().__init__(parent)
         self.field = field
         self._init_ui(input_text, output_text)
+        self.setWindowTitle(f"Editing: {field.value}")
+        # Set a reasonable default size
+        self.resize(800, 600)
     
     def _init_ui(self, input_text: str, output_text: str):
         layout = QVBoxLayout()
@@ -205,6 +213,16 @@ class ExpandedFieldView(QWidget):
         # Header
         header = QHBoxLayout()
         header.addWidget(QLabel(f"Editing: {self.field.value}"))
+        
+        # Add regeneration buttons
+        regen_btn = QPushButton("🔄 Regenerate")
+        regen_btn.clicked.connect(self.regen_requested.emit)
+        header.addWidget(regen_btn)
+        
+        regen_deps_btn = QPushButton("🔄+ Regen with Dependencies")
+        regen_deps_btn.clicked.connect(self.regen_with_deps_requested.emit)
+        header.addWidget(regen_deps_btn)
+        
         header.addStretch()
         
         # Close button
@@ -223,6 +241,9 @@ class ExpandedFieldView(QWidget):
         input_layout = QVBoxLayout(input_widget)
         input_layout.addWidget(QLabel("Input"))
         self.input_edit = QTextEdit(input_text)
+        self.input_edit.textChanged.connect(
+            lambda: self.input_changed.emit(self.input_edit.toPlainText())
+        )
         input_layout.addWidget(self.input_edit)
         splitter.addWidget(input_widget)
         
@@ -231,11 +252,30 @@ class ExpandedFieldView(QWidget):
         output_layout = QVBoxLayout(output_widget)
         output_layout.addWidget(QLabel("Output"))
         self.output_edit = QTextEdit(output_text)
+        self.output_edit.textChanged.connect(
+            lambda: self.output_changed.emit(self.output_edit.toPlainText())
+        )
         output_layout.addWidget(self.output_edit)
         splitter.addWidget(output_widget)
         
         layout.addWidget(splitter)
+        
+        # Set equal sizes for splitter sections
+        splitter.setSizes([400, 400])
+        
         self.setLayout(layout)
+
+    def update_input(self, text: str):
+        """Update input text without triggering signals"""
+        self.input_edit.blockSignals(True)
+        self.input_edit.setPlainText(text)
+        self.input_edit.blockSignals(False)
+    
+    def update_output(self, text: str):
+        """Update output text without triggering signals"""
+        self.output_edit.blockSignals(True)
+        self.output_edit.setPlainText(text)
+        self.output_edit.blockSignals(False)
 
 class FieldViewManager:
     """Manages expanded field views"""
@@ -245,13 +285,35 @@ class FieldViewManager:
     def toggle_field_focus(self, 
                           field: FieldName,
                           input_text: str = "",
-                          output_text: str = "") -> None:
+                          output_text: str = "",
+                          input_widget=None,
+                          output_widget=None,
+                          regen_callback=None,
+                          regen_deps_callback=None) -> None:
         """Toggle expanded view for a field"""
         if field in self.active_views:
             self.active_views[field].close()
             del self.active_views[field]
         else:
             view = ExpandedFieldView(field, input_text, output_text)
+            
+            # Connect signals
+            if input_widget:
+                view.input_changed.connect(lambda t: input_widget.set_input(t))
+                input_widget.input_changed.connect(view.update_input)
+            
+            if output_widget:
+                view.output_changed.connect(lambda t: output_widget.setPlainText(t))
+                output_widget.textChanged.connect(
+                    lambda: view.update_output(output_widget.toPlainText())
+                )
+            
+            if regen_callback:
+                view.regen_requested.connect(regen_callback)
+            
+            if regen_deps_callback:
+                view.regen_with_deps_requested.connect(regen_deps_callback)
+            
             self.active_views[field] = view
             view.show()
     

@@ -121,7 +121,7 @@ class BasePromptWidget(QWidget):
     def clear(self):
         """Clear all inputs"""
         self.prompt_edit.clear()
-        self.order_input.setValue(0)
+        self.order_input.setText("")
 
 class BasePromptsContainer(QWidget):
     """Container for all base prompt widgets"""

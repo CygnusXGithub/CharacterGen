@@ -3,3 +3,4 @@
 *.pyc
 /data/characters
 /data/base_prompts
+/venv

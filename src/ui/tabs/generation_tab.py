@@ -323,30 +323,35 @@ class GenerationTab(QWidget):
     def _handle_generate_all(self):
         """Handle generation of all fields"""
         try:
-            # Generate each field in order
-            for field in self.input_widgets.keys():
-                context = self._create_generation_context(field)
-                callbacks = self._create_callbacks()
+            # Get the first field in the generation order
+            ordered_fields = self.generation_service._get_ordered_fields()
+            if not ordered_fields:
+                raise GenerationError("No fields with generation order defined")
                 
-                # Special handling for name field when in direct mode
-                if (field == FieldName.NAME and 
-                    context.generation_mode == GenerationMode.DIRECT):
-                    self._handle_generation_result(
-                        field,
-                        GenerationResult(
-                            field=field,
-                            content=context.user_input
-                        )
+            first_field = ordered_fields[0]
+            
+            # Create context for the first field and generate all from there
+            context = self._create_generation_context(first_field)
+            callbacks = self._create_callbacks()
+            
+            # Special handling for name field when in direct mode
+            if (first_field == FieldName.NAME and 
+                context.generation_mode == GenerationMode.DIRECT):
+                self._handle_generation_result(
+                    first_field,
+                    GenerationResult(
+                        field=first_field,
+                        content=context.user_input
                     )
-                    continue
-                
-                results = self.generation_service.generate_field_with_deps(
-                    context, callbacks
                 )
                 
-                if any(isinstance(result, Exception) for result in results.values()):
-                    break
-                    
+            results = self.generation_service.generate_field_with_deps(
+                context, callbacks
+            )
+            
+            if any(isinstance(result.error, Exception) for result in results.values()):
+                return
+                        
         except Exception as e:
             QMessageBox.critical(
                 self,
