@@ -193,6 +193,7 @@ class AlternateGreetingsWidget(QWidget):
     greeting_updated = pyqtSignal(int, str)  # Index, new text
     greeting_deleted = pyqtSignal(int)       # Index to delete
     greeting_regenerated = pyqtSignal(int)   # Index to regenerate
+    greeting_added = pyqtSignal()            # Request to add new greeting
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -201,30 +202,62 @@ class AlternateGreetingsWidget(QWidget):
         self._init_ui()
     
     def _init_ui(self):
+        # Set size policy to match other fields
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Minimum
+        )
+        
         layout = QVBoxLayout()
+        # Match margins with other fields
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
         
-        # Header
-        header = QHBoxLayout()
-        header.addWidget(QLabel("Alternate Greetings"))
-        layout.addLayout(header)
-        
-        # Navigation and controls
+        # Controls bar
         controls = QHBoxLayout()
+        controls.addWidget(QLabel("Alternate Greetings"))
+        controls.setContentsMargins(0, 0, 0, 0)
+        
+        # Navigation group (left side)
+        nav_group = QHBoxLayout()
         
         self.prev_btn = QPushButton("←")
         self.prev_btn.setFixedWidth(30)
         self.prev_btn.clicked.connect(self._previous_greeting)
-        controls.addWidget(self.prev_btn)
+        nav_group.addWidget(self.prev_btn)
         
         self.counter_label = QLabel("0/0")
-        controls.addWidget(self.counter_label)
+        nav_group.addWidget(self.counter_label)
         
         self.next_btn = QPushButton("→")
         self.next_btn.setFixedWidth(30)
         self.next_btn.clicked.connect(self._next_greeting)
-        controls.addWidget(self.next_btn)
+        nav_group.addWidget(self.next_btn)
         
+        controls.addLayout(nav_group)
+        
+        # Add stretch to separate navigation from control buttons
         controls.addStretch()
+        
+        # Control buttons group (right side)
+        control_group = QHBoxLayout()
+        
+        # Add greeting button
+        self.add_btn = QPushButton("+")
+        self.add_btn.setFixedWidth(30)
+        self.add_btn.setToolTip("Add new alternate greeting")
+        self.add_btn.clicked.connect(lambda: self.greeting_added.emit())
+        control_group.addWidget(self.add_btn)
+        
+        # Remove greeting button
+        self.remove_btn = QPushButton("-")
+        self.remove_btn.setFixedWidth(30)
+        self.remove_btn.setToolTip("Remove current greeting")
+        self.remove_btn.clicked.connect(self._remove_current_greeting)
+        control_group.addWidget(self.remove_btn)
+        
+        # Add spacing between remove and regen buttons
+        control_group.addSpacing(10)
         
         # Regenerate current greeting button
         self.regen_btn = QPushButton("🔄")
@@ -233,13 +266,24 @@ class AlternateGreetingsWidget(QWidget):
         self.regen_btn.clicked.connect(
             lambda: self.greeting_regenerated.emit(self.current_index)
         )
-        controls.addWidget(self.regen_btn)
+        control_group.addWidget(self.regen_btn)
+        
+        controls.addLayout(control_group)
         
         layout.addLayout(controls)
         
         # Text display
         self.text_edit = QTextEdit()
-        self.text_edit.textChanged.connect(self._text_changed)
+        self.text_edit.setAcceptRichText(False)
+        self.text_edit.setMinimumHeight(60)
+        self.text_edit.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Minimum
+        )
+        # Add the same height adjustment as other fields
+        self.text_edit.document().documentLayout().documentSizeChanged.connect(
+            lambda: self._adjust_height()
+        )
         layout.addWidget(self.text_edit)
         
         self.setLayout(layout)
@@ -247,6 +291,13 @@ class AlternateGreetingsWidget(QWidget):
         
         self._update_controls()
     
+    def _adjust_height(self):
+        """Adjust height to fit content"""
+        doc_size = self.text_edit.document().size()
+        margins = self.text_edit.contentsMargins()
+        height = int(doc_size.height() + margins.top() + margins.bottom() + 10)
+        self.text_edit.setMinimumHeight(min(max(100, height), 400))
+
     def _text_changed(self):
         """Handle text changes"""
         if self.greetings:
@@ -296,6 +347,23 @@ class AlternateGreetingsWidget(QWidget):
         self.greetings.append(greeting)
         self.current_index = len(self.greetings) - 1
         self._update_display()
+
+    def _remove_current_greeting(self):
+        """Remove the current greeting"""
+        if not self.greetings or self.current_index < 0 or self.current_index >= len(self.greetings):
+            return
+            
+        self.greeting_deleted.emit(self.current_index)
+        self.greetings.pop(self.current_index)
+        if self.greetings:
+            # Adjust current index if needed
+            if self.current_index >= len(self.greetings):
+                self.current_index = len(self.greetings) - 1
+            self._update_display()
+        else:
+            self.current_index = -1
+            self.setVisible(False)
+        self._update_controls()
     
     def clear_greetings(self):
         """Clear all greetings"""
