@@ -237,15 +237,16 @@ class EditorTab(QWidget):
         layout.addLayout(right_panel, stretch=1)
         self.setLayout(layout)
         
-        # Connect editing finished signals for better sync
+        # Signal connections at the bottom:
         for field_name, widget in self.fields.items():
             if isinstance(widget.editor, QTextEdit):
                 widget.editor.textChanged.connect(
                     lambda name=field_name: self._handle_editor_changed(name)
                 )
             else:
-                widget.editor.editingFinished.connect(
-                    lambda name=field_name: self._handle_editor_changed(name)
+                # Use textChanged for QLineEdit too
+                widget.editor.textChanged.connect(
+                    lambda text, name=field_name: self._handle_editor_changed(name)
                 )
 
     def _handle_editor_changed(self, field_name: str):
@@ -258,13 +259,20 @@ class EditorTab(QWidget):
             value = self.fields[field_name].get_text()
             
             # Handle different field types
-            if field_name in ['name', 'version', 'creator']:
+            if field_name in ['version', 'creator']:
                 setattr(self.current_character, field_name, value)
+                print(f"EditorTab: Emitting update for field {field_name}")
+                self.character_updated.emit(self.current_character, field_name)
+            elif field_name == 'name':
+                setattr(self.current_character, field_name, value)
+                self.current_character.fields[FieldName(field_name)] = value
+                print(f"EditorTab: Emitting update for field {field_name}")
                 self.character_updated.emit(self.current_character, field_name)
             elif field_name == 'tags':
                 self.current_character.tags = [
                     tag.strip() for tag in value.split(',') if tag.strip()
                 ]
+                print(f"EditorTab: Emitting update for field {field_name}")
                 self.character_updated.emit(self.current_character, field_name)
             else:
                 # Try as FieldName first, then CardField
