@@ -9,129 +9,236 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from ...core.enums import FieldName, GenerationMode, UIMode
 from ..widgets.common import EditableField
 
-class FieldInputWidget(QWidget):
-    """Enhanced field input widget with generation controls"""
-    regen_requested = pyqtSignal(FieldName)  # Single regeneration
-    regen_with_deps_requested = pyqtSignal(FieldName)  # Regeneration with dependents
-    input_changed = pyqtSignal(FieldName, str)  # Input text changed
-    mode_changed = pyqtSignal(FieldName, GenerationMode)  # Generation mode changed
-    focus_changed = pyqtSignal(FieldName, bool)  # Field focus changed
-    
+class BaseFieldWidget(QWidget):
+    """Base class for field editing widgets with common functionality"""
+    input_changed = pyqtSignal(str)
+    output_changed = pyqtSignal(str)
+    regen_requested = pyqtSignal()
+    regen_with_deps_requested = pyqtSignal()
+
     def __init__(self, field: FieldName, parent=None):
         super().__init__(parent)
         self.field = field
-        self.ui_mode = UIMode.COMPACT
-        self._init_ui()
+        self._init_base_ui()
+
+    def _init_base_ui(self):
+        """Initialize common UI elements"""
+        self.layout = QVBoxLayout()
         
-    def _init_ui(self):
-        layout = QVBoxLayout()
+        # Header with field name and controls
+        self.header = self._create_header()
+        self.layout.addWidget(self.header)
         
-        # Header
-        header = QHBoxLayout()
+        # Editor container (implementation varies by subclass)
+        self.editor_container = self._create_editor_container()
+        self.layout.addWidget(self.editor_container)
+        
+        self.setLayout(self.layout)
+
+    def _create_header(self) -> QWidget:
+        """Create header with common controls"""
+        header = QWidget()
+        header_layout = QHBoxLayout()
         
         # Field label
         label = QLabel(self.field.value.replace('_', ' ').title())
-        header.addWidget(label)
+        header_layout.addWidget(label)
         
-        # Generation mode checkbox for name field
-        if self.field == FieldName.NAME:
-            self.gen_mode_checkbox = QCheckBox("Generate")
-            self.gen_mode_checkbox.setChecked(True)
-            self.gen_mode_checkbox.stateChanged.connect(self._handle_mode_change)
-            header.addWidget(self.gen_mode_checkbox)
+        # Regeneration buttons
+        self.regen_btn = QPushButton("🔄")
+        self.regen_btn.setToolTip("Regenerate this field")
+        self.regen_btn.setFixedWidth(30)
+        self.regen_btn.clicked.connect(self.regen_requested.emit)
         
-        # Focus toggle button
-        focus_btn = QPushButton("🔍")
-        focus_btn.setToolTip("Toggle field focus")
-        focus_btn.setFixedWidth(30)
-        focus_btn.clicked.connect(self._toggle_focus)
-        header.addWidget(focus_btn)
+        self.regen_deps_btn = QPushButton("🔄+")
+        self.regen_deps_btn.setToolTip("Regenerate this field and its dependents")
+        self.regen_deps_btn.setFixedWidth(30)
+        self.regen_deps_btn.clicked.connect(self.regen_with_deps_requested.emit)
         
-        header.addStretch()
-        layout.addLayout(header)
+        header_layout.addWidget(self.regen_btn)
+        header_layout.addWidget(self.regen_deps_btn)
+        header_layout.addStretch()
         
-        # Input area
-        input_layout = QHBoxLayout()
-        
-        # Input text area
-        self.input = QTextEdit()
-        self.input.setPlaceholderText(f"Enter {self.field.value}...")
-        self.input.setAcceptRichText(False)
-        self.input.document().documentLayout().documentSizeChanged.connect(
-            lambda: self._adjust_height(self.input)
+        header.setLayout(header_layout)
+        return header
+
+    def _create_editor_container(self) -> QWidget:
+        """Create editor container (implemented by subclasses)"""
+        raise NotImplementedError
+
+    def _create_text_edit(self, placeholder: str = "") -> QTextEdit:
+        """Create a standardized text edit widget"""
+        text_edit = QTextEdit()
+        text_edit.setAcceptRichText(False)
+        text_edit.setPlaceholderText(placeholder)
+        text_edit.setMinimumHeight(100)
+        text_edit.document().documentLayout().documentSizeChanged.connect(
+            lambda: self._adjust_height(text_edit)
         )
-        # Set minimum height
-        self.input.setMinimumHeight(100)
-        # Allow growing but start at minimum
-        self.input.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Minimum
-        )
-        input_layout.addWidget(self.input)
-        
-        # Generation buttons
-        button_layout = QVBoxLayout()
-        
-        # Single regeneration button
-        regen_btn = QPushButton("🔄")
-        regen_btn.setToolTip("Regenerate this field")
-        regen_btn.setFixedWidth(30)
-        regen_btn.clicked.connect(lambda: self.regen_requested.emit(self.field))
-        button_layout.addWidget(regen_btn)
-        
-        # Regenerate with dependencies button
-        regen_deps_btn = QPushButton("🔄+")
-        regen_deps_btn.setToolTip("Regenerate this field and its dependents")
-        regen_deps_btn.setFixedWidth(30)
-        regen_deps_btn.clicked.connect(
-            lambda: self.regen_with_deps_requested.emit(self.field)
-        )
-        button_layout.addWidget(regen_deps_btn)
-        
-        input_layout.addLayout(button_layout)
-        layout.addLayout(input_layout)
-        
-        self.setLayout(layout)
-    
-    def _handle_input_change(self):
-        """Handle input text changes"""
-        text = self.input.toPlainText()
-        self.input_changed.emit(self.field, text)
-    
-    def _handle_mode_change(self, state):
-        """Handle generation mode changes"""
-        mode = GenerationMode.GENERATE if state else GenerationMode.DIRECT
-        self.mode_changed.emit(self.field, mode)
-    
-    def _toggle_focus(self):
-        """Toggle field focus mode"""
-        # Only emit the focus signal, don't change the main field's appearance
-        is_focused = any(view.isVisible() for view in self.parent().findChildren(ExpandedFieldView))
-        self.focus_changed.emit(self.field, not is_focused)
-    
-    def _update_ui_mode(self):
-        """Update UI based on current mode - now only used for initialization"""
-        self.input.setMaximumHeight(100)
-        self.input.setMinimumHeight(60)
-    
-    def get_input(self) -> str:
-        """Get input text"""
-        return self.input.toPlainText()
-    
-    def set_input(self, text: str):
-        """Set input text"""
-        self.input.setPlainText(text)
+        return text_edit
 
     def _adjust_height(self, text_edit: QTextEdit):
-        """Adjust height to fit content with minimum height"""
+        """Standard height adjustment for text editors"""
         doc_size = text_edit.document().size()
         margins = text_edit.contentsMargins()
         height = int(doc_size.height() + margins.top() + margins.bottom() + 10)
         text_edit.setMinimumHeight(min(max(100, height), 400))
 
-class MessageExampleWidget(FieldInputWidget):
-    """Specialized widget for message examples with append functionality"""
-    append_requested = pyqtSignal(FieldName)  # Changed to not need context string
+    def get_input(self) -> str:
+        """Get input text"""
+        if hasattr(self, 'input'):
+            return self.input.toPlainText()
+        return ""
+
+    def set_input(self, text: str):
+        """Set input text without triggering signals"""
+        if hasattr(self, 'input'):
+            self.input.blockSignals(True)
+            self.input.setPlainText(text)
+            self.input.blockSignals(False)
+
+class CompactFieldWidget(BaseFieldWidget):
+    """Compact view of field for main window"""
+    focus_changed = pyqtSignal(FieldName, bool)
+
+    def _init_base_ui(self):
+        """Override to customize layout spacing"""
+        super()._init_base_ui()
+        # Reduce spacing between header and editor
+        self.layout.setSpacing(5)  # Reduce from default
+        self.layout.setContentsMargins(5, 5, 5, 5)  # Consistent small margins
+
+    def _create_header(self) -> QWidget:
+        header = super()._create_header()
+        header_layout = header.layout()
+        header_layout.setContentsMargins(0, 0, 0, 0)  # Remove header margins
+        
+        # Add focus toggle
+        focus_btn = QPushButton("🔍")
+        focus_btn.setToolTip("Toggle field focus")
+        focus_btn.setFixedWidth(30)
+        focus_btn.clicked.connect(
+            lambda: self.focus_changed.emit(self.field, True)
+        )
+        header_layout.insertWidget(header_layout.count() - 1, focus_btn)
+        
+        return header
+
+    def _create_editor_container(self) -> QWidget:
+        container = QWidget()
+        layout = QHBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)  # Remove container margins
+        layout.setSpacing(5)  # Consistent spacing
+        
+        self.input = self._create_text_edit(f"Enter {self.field.value}...")
+        self.input.textChanged.connect(
+            lambda: self.input_changed.emit(self.input.toPlainText())
+        )
+        layout.addWidget(self.input)
+        
+        container.setLayout(layout)
+        return container
+    
+    def get_input(self) -> str:
+        """Get input text"""
+        return self.input.toPlainText()
+
+    def set_input(self, text: str):
+        """Set input text without triggering signals"""
+        self.input.blockSignals(True)
+        self.input.setPlainText(text)
+        self.input.blockSignals(False)
+
+class ExpandedFieldWidget(BaseFieldWidget):
+    """Expanded view of field for focused editing"""
+    def _create_header(self) -> QWidget:
+        """Override header creation for a more compact layout"""
+        header = QWidget()
+        header_layout = QHBoxLayout()
+        # Reduce margins
+        header_layout.setContentsMargins(5, 5, 5, 5)
+        header_layout.setSpacing(5)
+        
+        # Field label with more compact styling
+        label = QLabel(self.field.value.replace('_', ' ').title())
+        header_layout.addWidget(label)
+        
+        # Regeneration buttons in a more compact layout
+        self.regen_btn = QPushButton("🔄")
+        self.regen_btn.setToolTip("Regenerate this field")
+        self.regen_btn.setFixedWidth(30)
+        self.regen_btn.clicked.connect(self.regen_requested.emit)
+        
+        self.regen_deps_btn = QPushButton("🔄+")
+        self.regen_deps_btn.setToolTip("Regenerate this field and its dependents")
+        self.regen_deps_btn.setFixedWidth(30)
+        self.regen_deps_btn.clicked.connect(self.regen_with_deps_requested.emit)
+        
+        # Add buttons with minimal spacing
+        header_layout.addWidget(self.regen_btn)
+        header_layout.addWidget(self.regen_deps_btn)
+        header_layout.addStretch()
+        
+        header.setLayout(header_layout)
+        header.setFixedHeight(40)  # Constrain header height
+        return header
+
+    def _create_editor_container(self) -> QWidget:
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        
+        # Input section
+        input_container = QWidget()
+        input_layout = QVBoxLayout(input_container)
+        input_layout.setContentsMargins(5, 5, 5, 5)  # Reduce margins
+        input_layout.setSpacing(5)  # Reduce spacing
+        
+        input_header = QLabel("Input")
+        input_header.setStyleSheet("font-weight: bold;")
+        input_layout.addWidget(input_header)
+        
+        self.input = self._create_text_edit(f"Enter {self.field.value}...")
+        input_layout.addWidget(self.input)
+        splitter.addWidget(input_container)
+        
+        # Output section
+        output_container = QWidget()
+        output_layout = QVBoxLayout(output_container)
+        output_layout.setContentsMargins(5, 5, 5, 5)  # Reduce margins
+        output_layout.setSpacing(5)  # Reduce spacing
+        
+        output_header = QLabel("Output")
+        output_header.setStyleSheet("font-weight: bold;")
+        output_layout.addWidget(output_header)
+        
+        self.output = self._create_text_edit("Generated output will appear here...")
+        output_layout.addWidget(self.output)
+        splitter.addWidget(output_container)
+        
+        # Set equal sizes
+        splitter.setSizes([1, 1])
+        return splitter
+
+    def _init_base_ui(self):
+        """Override to customize layout for expanded view"""
+        super()._init_base_ui()
+        # Reduce overall margins
+        self.layout.setContentsMargins(5, 5, 5, 5)
+        self.layout.setSpacing(5)
+
+    def set_input(self, text: str):
+        """Update input text without triggering signals"""
+        self.input.blockSignals(True)
+        self.input.setPlainText(text)
+        self.input.blockSignals(False)
+
+    def set_output(self, text: str):
+        """Update output text without triggering signals"""
+        self.output.blockSignals(True)
+        self.output.setPlainText(text)
+        self.output.blockSignals(False)
+
+class MessageExampleWidget(CompactFieldWidget):
+    append_requested = pyqtSignal(FieldName)
     
     def __init__(self, parent=None):
         super().__init__(FieldName.MES_EXAMPLE, parent)
@@ -140,36 +247,27 @@ class MessageExampleWidget(FieldInputWidget):
     def _add_append_controls(self):
         """Add controls for appending examples"""
         append_layout = QHBoxLayout()
-        
-        # Append button
         append_btn = QPushButton("Append More Examples")
         append_btn.clicked.connect(lambda: self.append_requested.emit(self.field))
         append_layout.addWidget(append_btn)
-        
-        # Add to main layout
-        self.layout().addLayout(append_layout)
+        self.layout.addLayout(append_layout)
 
-class FirstMessageWidget(FieldInputWidget):
-    """Specialized widget for first message with alternate greeting support"""
-    greeting_requested = pyqtSignal(FieldName)  # Request new alternate greeting
+class FirstMessageWidget(CompactFieldWidget):
+    greeting_requested = pyqtSignal(FieldName)
     
     def __init__(self, parent=None):
         super().__init__(FieldName.FIRST_MES, parent)
         self._add_greeting_controls()
-        
+    
     def _add_greeting_controls(self):
         """Add controls for alternate greetings"""
         greeting_layout = QHBoxLayout()
-        
-        # Add alternate greeting button
         greeting_btn = QPushButton("Add Alternate Greeting")
         greeting_btn.clicked.connect(
             lambda: self.greeting_requested.emit(self.field)
         )
         greeting_layout.addWidget(greeting_btn)
-        
-        # Add to main layout
-        self.layout().addLayout(greeting_layout)
+        self.layout.addLayout(greeting_layout)
 
 class AlternateGreetingsWidget(QWidget):
     """Widget for displaying and managing alternate greetings"""
@@ -353,97 +451,11 @@ class AlternateGreetingsWidget(QWidget):
         self.greetings = []
         self.current_index = -1
         self._update_display()
-        
-class ExpandedFieldView(QWidget):
-    input_changed = pyqtSignal(str)   
-    output_changed = pyqtSignal(str)   
-    regen_requested = pyqtSignal()
-    regen_with_deps_requested = pyqtSignal()
-    def __init__(self, 
-                 field: FieldName,
-                 input_text: str = "",
-                 output_text: str = "",
-                 parent=None):
-        super().__init__(parent)
-        self.field = field
-        self._init_ui(input_text, output_text)
-        self.setWindowTitle(f"Editing: {field.value}")
-        self.resize(800, 600)
-        self.setWindowFlags(Qt.WindowType.Window)
-
-    def _init_ui(self, input_text: str, output_text: str):
-        layout = QVBoxLayout()
-        
-        # Header (now without close button)
-        header = QHBoxLayout()
-        header.addWidget(QLabel(f"Editing: {self.field.value}"))
-        
-        # Add regeneration buttons
-        regen_btn = QPushButton("🔄 Regenerate")
-        regen_btn.clicked.connect(self.regen_requested.emit)
-        header.addWidget(regen_btn)
-        
-        regen_deps_btn = QPushButton("🔄+ Regen with Dependencies")
-        regen_deps_btn.clicked.connect(self.regen_with_deps_requested.emit)
-        header.addWidget(regen_deps_btn)
-        
-        header.addStretch()
-        layout.addLayout(header)
-        
-        # Splitter for input/output
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        
-        # Input section
-        input_widget = QWidget()
-        input_layout = QVBoxLayout(input_widget)
-        input_layout.addWidget(QLabel("Input"))
-        self.input_edit = QTextEdit(input_text)
-        self.input_edit.textChanged.connect(
-            lambda: self.input_changed.emit(self.input_edit.toPlainText())
-        )
-        input_layout.addWidget(self.input_edit)
-        splitter.addWidget(input_widget)
-        
-        # Output section
-        output_widget = QWidget()
-        output_layout = QVBoxLayout(output_widget)
-        output_layout.addWidget(QLabel("Output"))
-        self.output_edit = QTextEdit(output_text)
-        self.output_edit.textChanged.connect(
-            lambda: self.output_changed.emit(self.output_edit.toPlainText())
-        )
-        output_layout.addWidget(self.output_edit)
-        splitter.addWidget(output_widget)
-        
-        layout.addWidget(splitter)
-        
-        # Set equal sizes for splitter sections
-        splitter.setSizes([400, 400])
-        
-        self.setLayout(layout)
-
-    def update_input(self, text: str):
-        """Update input text without triggering signals"""
-        self.input_edit.blockSignals(True)
-        self.input_edit.setPlainText(text)
-        self.input_edit.blockSignals(False)
-    
-    def update_output(self, text: str):
-        """Update output text without triggering signals"""
-        self.output_edit.blockSignals(True)
-        self.output_edit.setPlainText(text)
-        self.output_edit.blockSignals(False)
-
-    def closeEvent(self, event):
-        """Handle window close event"""
-        # Notify parent of closure through the window system
-        self.parent().handle_view_closed(self.field) if self.parent() else None
-        event.accept()
 
 class FieldViewManager:
-    """Manages expanded field views"""
     def __init__(self):
-        self.active_views: Dict[FieldName, ExpandedFieldView] = {}
+        """Initialize field view manager"""
+        self.active_views = {}  # Add this initialization
 
     def toggle_field_focus(self, 
                           field: FieldName,
@@ -453,26 +465,26 @@ class FieldViewManager:
                           output_widget=None,
                           regen_callback=None,
                           regen_deps_callback=None) -> None:
-        """Toggle expanded view for a field"""
         if field in self.active_views and self.active_views[field].isVisible():
             self.active_views[field].close()
             self.active_views.pop(field)
         else:
-            # Create view without parent
-            view = ExpandedFieldView(field, input_text, output_text)
+            # Create expanded view
+            view = ExpandedFieldWidget(field)
             
-            # Connect our own close handler
-            view.destroyed.connect(lambda: self.handle_view_closed(field))
+            # Set initial texts
+            view.set_input(input_text)
+            view.set_output(output_text)
             
             # Connect signals
             if input_widget:
                 view.input_changed.connect(lambda t: input_widget.set_input(t))
-                input_widget.input_changed.connect(view.update_input)
+                input_widget.input_changed.connect(view.set_input)
             
             if output_widget:
                 view.output_changed.connect(lambda t: output_widget.setPlainText(t))
                 output_widget.textChanged.connect(
-                    lambda: view.update_output(output_widget.toPlainText())
+                    lambda: view.set_output(output_widget.toPlainText())
                 )
             
             if regen_callback:
@@ -481,8 +493,13 @@ class FieldViewManager:
             if regen_deps_callback:
                 view.regen_with_deps_requested.connect(regen_deps_callback)
             
-            self.active_views[field] = view
+            # Show in window
+            view.setWindowFlags(Qt.WindowType.Window)
+            view.setWindowTitle(f"Editing: {field.value}")
+            view.resize(800, 600)
             view.show()
+            
+            self.active_views[field] = view
 
     def handle_view_closed(self, field: FieldName):
         """Handle view closure from window system"""
@@ -491,6 +508,6 @@ class FieldViewManager:
     
     def close_all(self):
         """Close all expanded views"""
-        for view in self.active_views.values():
+        for view in list(self.active_views.values()):
             view.close()
         self.active_views.clear()

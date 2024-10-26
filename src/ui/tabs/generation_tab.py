@@ -15,8 +15,8 @@ from ...core.exceptions import (
 from ...services.character_service import CharacterService
 from ...services.generation_service import GenerationService
 from ..widgets.field_widgets import (
-    FieldInputWidget, MessageExampleWidget,
-    FirstMessageWidget, FieldViewManager,AlternateGreetingsWidget
+    CompactFieldWidget, MessageExampleWidget,
+    FirstMessageWidget, FieldViewManager, AlternateGreetingsWidget
 )
 from ..widgets.common import LoadSaveWidget, DragDropFrame, StatusBar
 
@@ -92,7 +92,7 @@ class GenerationTab(QWidget):
             elif field == FieldName.FIRST_MES:
                 widget = FirstMessageWidget()
             else:
-                widget = FieldInputWidget(field)
+                widget = CompactFieldWidget(field)
             
             self.input_widgets[field] = widget
             input_container_layout.addWidget(widget)

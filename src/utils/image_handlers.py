@@ -17,10 +17,7 @@ class ImageProcessor:
                 max_size: Tuple[int, int] = (800, 800)) -> Image.Image:
         """Resize image while maintaining aspect ratio"""
         if image.size[0] > max_size[0] or image.size[1] > max_size[1]:
-            try:
-                image.thumbnail(max_size, Image.LANCZOS)  # For older Pillow versions
-            except AttributeError:
-                image.thumbnail(max_size, Image.Resampling.LANCZOS)  # For newer versions
+            image.thumbnail(max_size, Image.Resampling.LANCZOS)
         return image
     
     @staticmethod
