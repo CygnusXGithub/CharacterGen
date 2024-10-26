@@ -21,6 +21,8 @@ from ..widgets.field_widgets import (
 from ..widgets.common import LoadSaveWidget, DragDropFrame, StatusBar
 
 class GenerationTab(QWidget):
+    character_loaded = pyqtSignal(CharacterData)  # When a character is loaded from file
+    character_updated = pyqtSignal(CharacterData, str)  # When character data is modified (character, field_name)
     def __init__(self, 
                  character_service: CharacterService,
                  generation_service: GenerationService,
@@ -30,13 +32,13 @@ class GenerationTab(QWidget):
         self.generation_service = generation_service
         self.field_view_manager = FieldViewManager()
         self.current_character: Optional[CharacterData] = None
+        self.is_updating = False
         # Initialize dictionaries
         self.input_widgets = {}
         self.output_texts = {}
         
         self._init_ui()
         self._connect_signals()
-        self._load_available_characters()
     
     def _init_ui(self):
         layout = QVBoxLayout()
@@ -196,6 +198,16 @@ class GenerationTab(QWidget):
         layout.addWidget(self.status_bar)
         
         self.setLayout(layout)
+
+        # Add dictionary to track output changes
+        self._output_handlers = {}
+
+        # For each output text widget, connect its textChanged signal
+        for field in FieldName:
+            if field in self.output_texts:
+                self.output_texts[field].textChanged.connect(
+                    lambda field=field: self._handle_output_changed(field)
+                )
     
     def _connect_signals(self):
         """Connect signal handlers"""
@@ -253,23 +265,28 @@ class GenerationTab(QWidget):
     
     def _handle_load_character(self, name: str):
         """Handle loading of a character"""
+        print(f"Loading character: {name}")
         if not name:
             return
-                
+                    
         try:
             self.current_character = self.character_service.load(name)
-            
+            print(f"Character loaded: {self.current_character.name}")
+
             # Update UI
-            self._update_output_displays(self.current_character.fields)
+            self._update_output_displays(self.current_character.fields, emit_updates=False)
             
             # Load alternate greetings
             if self.current_character.alternate_greetings:
                 self.alt_greetings_widget.set_greetings(self.current_character.alternate_greetings)
             else:
-                self.alt_greetings_widget.set_greetings([])  # Clear if no greetings
+                self.alt_greetings_widget.set_greetings([])
             
+            # Emit signal for character loaded
+            self.character_loaded.emit(self.current_character)
+
             self.status_bar.set_status(f"Loaded character: {name}")
-            
+                
         except CharacterLoadError as e:
             QMessageBox.warning(
                 self,
@@ -596,16 +613,31 @@ class GenerationTab(QWidget):
         else:
             self.field_view_manager.toggle_field_focus(field)
     
-    def _handle_output_change(self, field: FieldName):
-        """Handle changes to output text"""
+    def _handle_output_changed(self, field: FieldName):
+        """Handle changes in output text widgets"""
+        if self.is_updating:
+            return
+                
         if self.current_character:
-            self.current_character.fields[field] = self.output_texts[field].toPlainText()
+            self.is_updating = True
+            try:
+                text = self.output_texts[field].toPlainText()
+                self.current_character.fields[field] = text
+                print(f"GenerationTab: Emitting update for field {field.value}")
+                self.character_updated.emit(self.current_character, field.value)
+            finally:
+                self.is_updating = False
     
-    def _update_output_displays(self, fields: Dict[FieldName, str]):
-        """Update all output displays with new values"""
-        for field, value in fields.items():
-            if field in self.output_texts:
-                self.output_texts[field].setPlainText(value)
+    def _handle_generation_result(self, field: FieldName, result: GenerationResult):
+        """Handle successful generation"""
+        self.output_texts[field].setPlainText(result.content)
+        if self.current_character:
+            self.current_character.fields[field] = result.content
+            self.character_updated.emit(self.current_character, field.value)
+        
+        self.status_bar.set_status(
+            f"Generated {field.value} in {result.attempts} attempts"
+        )
     
     def _create_generation_context(self, field: FieldName) -> GenerationContext:
         """Create generation context for a field"""
@@ -645,16 +677,6 @@ class GenerationTab(QWidget):
             on_error=lambda field, error: self._handle_generation_error(
                 field, error
             )
-        )
-    
-    def _handle_generation_result(self, field: FieldName, result: GenerationResult):
-        """Handle successful generation"""
-        self.output_texts[field].setPlainText(result.content)
-        if self.current_character:
-            self.current_character.fields[field] = result.content
-        
-        self.status_bar.set_status(
-            f"Generated {field.value} in {result.attempts} attempts"
         )
     
     def _handle_generation_error(self, field: FieldName, error: Exception):
@@ -707,6 +729,66 @@ class GenerationTab(QWidget):
                 f"Error loading dropped file: {str(e)}"
             )
     
+    def _update_output_displays(self, fields: Dict[FieldName, str], emit_updates: bool = True):
+        """Update all output displays with new values"""
+        if self.is_updating:
+            return
+                
+        self.is_updating = True
+        try:
+            for field, value in fields.items():
+                if field in self.output_texts:
+                    self.output_texts[field].setPlainText(value)
+            
+            # Emit update signal only if requested
+            if emit_updates and self.current_character:
+                # Emit with None as field to indicate full update
+                self.character_updated.emit(self.current_character, "all")
+        finally:
+            self.is_updating = False
+
+    def set_initial_character(self, character: CharacterData):
+        """Set initial character data without emitting updates"""
+        print(f"GenerationTab: Setting initial character {character.name}")
+        self.is_updating = True
+        try:
+            self.current_character = character
+            self._update_output_displays(character.fields, emit_updates=False)
+            
+            # Update load/save name
+            self.load_save.save_name.setText(character.name)
+            
+            # Update alternate greetings
+            if character.alternate_greetings:
+                self.alt_greetings_widget.set_greetings(character.alternate_greetings)
+            else:
+                self.alt_greetings_widget.set_greetings([])
+        finally:
+            self.is_updating = False
+
+    def handle_external_update(self, character: CharacterData, updated_field: Optional[str] = None):
+        """Handle updates from other tabs"""
+        if self.is_updating:
+            return
+            
+        self.is_updating = True
+        try:
+            self.current_character = character
+            
+            # If specific field updated, only update that field
+            if updated_field:
+                try:
+                    field = FieldName(updated_field)
+                    if field in self.output_texts:
+                        self.output_texts[field].setPlainText(character.fields.get(field, ''))
+                except ValueError:
+                    pass
+            else:
+                # Otherwise update all fields
+                self._update_output_displays(character.fields, emit_updates=False)
+        finally:
+            self.is_updating = False
+
     def closeEvent(self, event):
         """Handle tab closing"""
         # Close any open field views

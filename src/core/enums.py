@@ -9,6 +9,20 @@ class FieldName(Enum):
     MES_EXAMPLE = "mes_example"
     PERSONALITY = "personality"
 
+class CardField(Enum):
+    """All character card fields including metadata"""
+    # Generated fields (map to FieldName)
+    NAME = "name"
+    DESCRIPTION = "description"
+    SCENARIO = "scenario"
+    FIRST_MES = "first_mes"
+    MES_EXAMPLE = "mes_example"
+    PERSONALITY = "personality"
+    
+    # Metadata fields
+    SYSTEM_PROMPT = "system_prompt"
+    CREATOR_NOTES = "creator_notes"
+
 class CardFormat(Enum):
     """Supported character card formats"""
     JSON = "json"
