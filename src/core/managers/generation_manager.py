@@ -38,25 +38,24 @@ class GenerationManager(QObject):
         return self._is_generating
     
     def generate_field(self, field: FieldName, input_text: str = "", 
-                      mode: GenerationMode = GenerationMode.GENERATE):
+                    mode: GenerationMode = GenerationMode.GENERATE):
         """Generate content for a single field"""
-        # Queue the generation if already generating
         if self._is_generating:
             self._generation_queue.append((field, input_text, mode))
             return
-        
+            
         try:
             self._is_generating = True
-            self.generation_started.emit(field)
             
             # Create generation context
             context = self._create_context(field, input_text, mode)
             
-            # Create callbacks for progress tracking
-            callbacks = self._create_callbacks()
-            
-            # Generate content
-            result = self.generation_service.generate_field(context)
+            # Generate with force_new=True to ensure new content
+            result = self.generation_service.generate_field(
+                context,
+                callbacks=self._create_callbacks(),
+                force_new=True
+            )
             
             # Update character with result
             if not result.error:

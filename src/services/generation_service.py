@@ -31,7 +31,8 @@ class GenerationService:
         return self._is_generating
 
     def generate_field(self, context: GenerationContext,
-                      callbacks: Optional[GenerationCallbacks] = None) -> GenerationResult:
+                    callbacks: Optional[GenerationCallbacks] = None,
+                    force_new: bool = True) -> GenerationResult:
         """Generate content for a single field"""
         if self._is_generating:
             raise GenerationError("Generation already in progress")
@@ -45,23 +46,12 @@ class GenerationService:
             # Get prompt template
             template = self._get_template(context.current_field)
             
-            # Check dependencies
-            if not self._validate_dependencies(template, context):
-                raise DependencyError(
-                    context.current_field.value,
-                    list(template.required_fields - set(context.character_data.fields.keys()))
-                )
+            # Dependencies check removed - allow generation regardless
             
             # Handle direct input mode
             if context.generation_mode == GenerationMode.DIRECT:
                 return self._handle_direct_input(context)
             
-            # Check cache
-            cache_key = self._get_cache_key(context)
-            if cache_key in self._generation_cache:
-                return self._generation_cache[cache_key]
-            
-            # Process template
             if callbacks and callbacks.on_start:
                 callbacks.on_start(context.current_field)
             
@@ -92,7 +82,9 @@ class GenerationService:
             
             # Update history and cache
             self._add_to_history(result)
-            self._generation_cache[cache_key] = result
+            if not force_new:
+                cache_key = self._get_cache_key(context)
+                self._generation_cache[cache_key] = result
             
             if callbacks and callbacks.on_result:
                 callbacks.on_result(context.current_field, result)
@@ -114,7 +106,6 @@ class GenerationService:
             raise
         finally:
             self._is_generating = False
-            self._process_pending()
     
     def generate_field_with_deps(self, 
                                 context: GenerationContext,

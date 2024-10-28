@@ -202,8 +202,8 @@ class PromptService:
             raise PromptLoadError(f"Error scanning prompt sets: {str(e)}")
 
     def process_prompt(self, template: PromptTemplate, 
-                      input_text: str, 
-                      context: Dict[FieldName, str]) -> str:
+                    input_text: str, 
+                    context: Dict[FieldName, str]) -> str:
         """Process a prompt template with given context"""
         try:
             result = template.text
@@ -225,18 +225,21 @@ class PromptService:
                 )
             
             # Replace input placeholder
-            result = result.replace('{{input}}', input_text)
+            result = result.replace('{{input}}', input_text or '')
             
-            # Replace field references
+            # Replace field references with proper validation
             for field, value in context.items():
-                result = result.replace(f'{{{{{field.value}}}}}', value)
-            
-            # Handle character and user tags (pass through)
-            # These will be handled by the chat application
+                if isinstance(field, FieldName):  # Ensure we have a FieldName
+                    # Safely handle empty values
+                    safe_value = str(value) if value is not None else ''
+                    result = result.replace(f'{{{{{field.value}}}}}', safe_value)
+                else:
+                    logging.warning(f"Invalid field type in context: {type(field)}")
             
             return result.strip()
             
         except Exception as e:
+            logging.error(f"Error processing prompt: {str(e)}", exc_info=True)
             raise ValidationError(f"Error processing prompt: {str(e)}")
 
     def validate_dependencies(self, template: PromptTemplate, 
