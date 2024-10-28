@@ -86,29 +86,34 @@ class GenerationTab(QWidget):
         # Create field widgets
         for field in FieldName:
             if field == FieldName.MES_EXAMPLE:
-                widget = MessageExampleWidget(
-                    field=field,  # Add named parameters
+                self.input_widgets[field] = MessageExampleWidget(
+                    field=field,
                     ui_manager=self.ui_manager,
                     settings_manager=self.settings_manager,
+                    min_height=100,
+                    max_height=300,
                     parent=self
                 )
             elif field == FieldName.FIRST_MES:
-                widget = FirstMessageWidget(
-                    field=field,  # Add named parameters
+                self.input_widgets[field] = FirstMessageWidget(
+                    field=field,
                     ui_manager=self.ui_manager,
                     settings_manager=self.settings_manager,
+                    min_height=100,
+                    max_height=300,
                     parent=self
                 )
             else:
-                widget = CompactFieldWidget(
-                    field=field,  # Add named parameters
+                self.input_widgets[field] = CompactFieldWidget(
+                    field=field,
                     ui_manager=self.ui_manager,
                     settings_manager=self.settings_manager,
+                    min_height=100,
+                    max_height=300,
                     parent=self
                 )
             
-            self.input_widgets[field] = widget
-            input_container_layout.addWidget(widget)
+            input_container_layout.addWidget(self.input_widgets[field])
         
         # Add generate button
         self.generate_btn = QPushButton("Generate All")
@@ -153,9 +158,9 @@ class GenerationTab(QWidget):
             text_edit = QTextEdit()
             text_edit.setAcceptRichText(False)
             text_edit.setMinimumHeight(100)
-            text_edit.setSizePolicy(
-                QSizePolicy.Policy.Expanding,
-                QSizePolicy.Policy.Minimum
+            text_edit.setMaximumHeight(300)  # Set maximum height
+            text_edit.document().contentsChanged.connect(
+                lambda text_edit=text_edit: self._adjust_output_height(text_edit)
             )
             text_edit.textChanged.connect(
                 lambda field=field: self._handle_output_changed(field)
@@ -195,6 +200,19 @@ class GenerationTab(QWidget):
         layout.addWidget(splitter)
         
         self.setLayout(layout)
+
+    def _adjust_output_height(self, text_edit: QTextEdit):
+        """Adjust output field height based on content"""
+        if not text_edit:
+            return
+            
+        doc_height = text_edit.document().size().height()
+        margins = text_edit.contentsMargins()
+        needed_height = doc_height + margins.top() + margins.bottom() + 10
+
+        new_height = max(100, min(needed_height, 300))
+        if new_height != text_edit.height():
+            text_edit.setFixedHeight(int(new_height))
 
     def _handle_generate_all(self):
         """Generate all fields in order"""
@@ -386,16 +404,21 @@ class GenerationTab(QWidget):
                 if field in self.input_widgets:
                     self.input_widgets[field].set_input('')  # Clear inputs
                     
-                if field in self.output_texts:
-                    self.output_texts[field].setPlainText(
-                        character.fields.get(field, '')
-                    )
+                if field in self.output_texts and field in character.fields:
+                    text_edit = self.output_texts[field]
+                    content = character.fields.get(field, '')
+                    if content:
+                        text_edit.setPlainText(content)
+                        # Force height adjustment directly
+                        self._adjust_output_height(text_edit)
             
-            # Update alternate greetings - make sure this exists
-            if hasattr(self, 'alt_greetings_widget'):  # Verify the attribute name
+            # Update alternate greetings
+            if hasattr(self, 'alt_greetings_widget'):
                 if character.alternate_greetings:
-                    print(f"Setting {len(character.alternate_greetings)} greetings in Gen Tab")  # Debug
+                    print(f"Setting {len(character.alternate_greetings)} greetings in Gen Tab")
                     self.alt_greetings_widget.set_greetings(character.alternate_greetings)
+                    # Force height adjustment
+                    self.alt_greetings_widget._adjust_height()
                 else:
                     self.alt_greetings_widget.set_greetings([])
                     
@@ -406,7 +429,7 @@ class GenerationTab(QWidget):
         """Handle updates from other tabs"""
         if self.is_updating:
             return
-                
+                    
         self.is_updating = True
         try:
             if updated_field:
@@ -416,6 +439,8 @@ class GenerationTab(QWidget):
                         self.output_texts[field].setPlainText(
                             character.fields.get(field, '')
                         )
+                        # Force height adjustment
+                        self._adjust_output_height(self.output_texts[field])
                 except ValueError:
                     pass
             else:
@@ -427,12 +452,15 @@ class GenerationTab(QWidget):
         """Update all output displays"""
         if self.is_updating:
             return
-                
+                    
         self.is_updating = True
         try:
             for field, value in fields.items():
                 if field in self.output_texts:
-                    self.output_texts[field].setPlainText(value)
+                    text_edit = self.output_texts[field]
+                    text_edit.setPlainText(value)
+                    # Force height adjustment directly
+                    self._adjust_output_height(text_edit)
             
             if emit_updates and self.character_manager.current_character:
                 self.character_updated.emit(

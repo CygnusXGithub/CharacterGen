@@ -47,41 +47,59 @@ class EditableField(QWidget):
                  ui_manager: UIStateManager,
                  settings_manager: Optional[SettingsManager] = None,
                  multiline: bool = False,
+                 min_height: int = 75,
+                 max_height: int = 400,
                  parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.label = label
         self.ui_manager = ui_manager
         self.settings_manager = settings_manager
         self.multiline = multiline
+        self.min_height = min_height
+        self.max_height = max_height
         self.is_updating = False
         self._init_ui()
-        self._connect_signals()
     
     def _init_ui(self):
         """Initialize UI"""
         layout = QVBoxLayout()
         layout.setSpacing(5)
         
-        # Header
-        header = QHBoxLayout()
-        header.setContentsMargins(0, 0, 0, 0)
+        # Header with label
+        header = QWidget()
+        header.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Fixed
+        )
         
-        # Label
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        
         label = QLabel(self.label)
         font = label.font()
         font.setBold(True)
         label.setFont(font)
-        header.addWidget(label)
+        # Set fixed height for label
+        label.setFixedHeight(25)
+        header_layout.addWidget(label)
+        header_layout.addStretch()
         
-        header.addStretch()
-        layout.addLayout(header)
+        header.setLayout(header_layout)
+        layout.addWidget(header)
         
         # Editor
         if self.multiline:
             self.editor = QTextEdit()
+            self.editor.setAcceptRichText(False)
+            self.editor.setMinimumHeight(self.min_height)
+            self.editor.setMaximumHeight(self.max_height)
+            # Connect to document size changes
+            self.editor.document().contentsChanged.connect(self._adjust_height)
             self.editor.textChanged.connect(self._handle_text_changed)
         else:
             self.editor = QLineEdit()
+            self.editor.setMinimumHeight(self.min_height)
+            self.editor.setMaximumHeight(self.max_height)
             self.editor.textChanged.connect(self._handle_text_changed)
         
         # Apply settings
@@ -92,9 +110,24 @@ class EditableField(QWidget):
             self.editor.setFont(font)
         
         layout.addWidget(self.editor)
-        
         self.setLayout(layout)
     
+    def _adjust_height(self):
+        """Adjust height based on content"""
+        if self.multiline:
+            # Get the document's size
+            doc_height = self.editor.document().size().height()
+            # Add margins
+            margins = self.editor.contentsMargins()
+            needed_height = doc_height + margins.top() + margins.bottom() + 10  # extra padding
+            
+            # Constrain to min/max
+            new_height = max(self.min_height, min(needed_height, self.max_height))
+            
+            # Only resize if needed
+            if new_height != self.editor.height():
+                self.editor.setFixedHeight(int(new_height))
+                
     def _connect_signals(self):
         """Connect signals"""
         if self.settings_manager:

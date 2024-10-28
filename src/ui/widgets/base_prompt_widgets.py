@@ -25,14 +25,20 @@ class BasePromptWidget(QWidget):
                  field: FieldName,
                  ui_manager: UIStateManager,
                  settings_manager: SettingsManager,
+                 min_height: int = 100,
+                max_height: int = 300,
                  parent=None):
         super().__init__(parent)
         self.field = field
         self.ui_manager = ui_manager
         self.settings_manager = settings_manager
         self.is_updating = False
+        self.min_height = min_height
+        self.max_height = max_height
         self._init_ui()
         self._connect_signals()
+
+        
     
     def _init_ui(self):
         layout = QVBoxLayout()
@@ -40,6 +46,10 @@ class BasePromptWidget(QWidget):
         
         # Header section
         header = QWidget()
+        header.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Fixed
+        )
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 0)
         
@@ -48,13 +58,13 @@ class BasePromptWidget(QWidget):
         font = label.font()
         font.setBold(True)
         label.setFont(font)
+        label.setFixedHeight(25)
         header_layout.addWidget(label)
         
         # Add spacer
         header_layout.addStretch()
         
         # Generation order section
-        order_widget = QWidget()
         order_layout = QHBoxLayout()
         order_layout.setContentsMargins(0, 0, 0, 0)
         
@@ -78,14 +88,16 @@ class BasePromptWidget(QWidget):
         self.prompt_edit.setAcceptRichText(False)
         self.prompt_edit.setPlaceholderText("Enter base prompt...")
         self.prompt_edit.textChanged.connect(self._handle_prompt_change)
+        self.prompt_edit.document().contentsChanged.connect(self._adjust_height)
+        self.prompt_edit.setMinimumHeight(self.min_height)
+        self.prompt_edit.setMaximumHeight(self.max_height)
+        layout.addWidget(self.prompt_edit)
         
         # Apply settings
         font_size = self.settings_manager.get("ui.font_size", 10)
         font = self.prompt_edit.font()
         font.setPointSize(font_size)
         self.prompt_edit.setFont(font)
-        
-        layout.addWidget(self.prompt_edit)
         
         # Validation button
         validate_btn = QPushButton("Validate Tags")
@@ -94,6 +106,17 @@ class BasePromptWidget(QWidget):
         
         self.setLayout(layout)
     
+    def _adjust_height(self):
+        """Adjust height based on content"""
+        doc_height = self.prompt_edit.document().size().height()
+        margins = self.prompt_edit.contentsMargins()
+        needed_height = doc_height + margins.top() + margins.bottom() + 10
+
+        new_height = max(self.min_height, min(needed_height, self.max_height))
+        
+        if new_height != self.prompt_edit.height():
+            self.prompt_edit.setFixedHeight(int(new_height))
+
     def _connect_signals(self):
         """Connect internal signals"""
         self.settings_manager.settings_updated.connect(self._apply_settings)
@@ -213,7 +236,13 @@ class BasePromptsContainer(QWidget):
         
         # Create widgets for each field
         for field in FieldName:
-            widget = BasePromptWidget(field, self.ui_manager, self.settings_manager)
+            widget = BasePromptWidget(
+                field,
+                self.ui_manager,
+                self.settings_manager,
+                min_height=100,
+                max_height=300
+            )
             self.prompt_widgets[field] = widget
             layout.addWidget(widget)
         

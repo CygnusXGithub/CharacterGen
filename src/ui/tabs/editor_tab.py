@@ -99,109 +99,129 @@ class EditorTab(QWidget):
         
         layout.addLayout(left_panel)
 
-        # Right panel - Fields
-        right_panel = QScrollArea()
-        right_panel.setWidgetResizable(True)
-        right_panel.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # Right panel with scrollable content
+        right_scroll = QScrollArea()
+        right_scroll.setWidgetResizable(True)
+        right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         
         form_container = QWidget()
         form_layout = QVBoxLayout(form_container)
         form_layout.setSpacing(20)
         
-        # Main Info Group
+        # Main Information group
         main_group = QGroupBox("Main Information")
-        main_layout = QFormLayout()
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+
+        # Set size policy to not stretch
+        main_group.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Maximum
+        )
         
-        # Top row with name, version, creator
+        # Top row for single-line fields
         top_row = QHBoxLayout()
         
+        # Name field
         self.fields['name'] = EditableField(
             "Name", multiline=False,
             ui_manager=self.ui_manager,
-            settings_manager=self.settings_manager
+            settings_manager=self.settings_manager,
+            min_height=25,
+            max_height=25
         )
         top_row.addWidget(self.fields['name'])
         
-        # Version field initialization
+        # Version field
         self.fields['version'] = EditableField(
             "Version", multiline=False,
             ui_manager=self.ui_manager,
-            settings_manager=self.settings_manager
+            settings_manager=self.settings_manager,
+            min_height=25,
+            max_height=25
         )
-        self.fields['version'].set_value("1.0.0")  
         top_row.addWidget(self.fields['version'])
         
-        # Creator field initialization
+        # Creator field
         self.fields['creator'] = EditableField(
             "Creator", multiline=False,
             ui_manager=self.ui_manager,
-            settings_manager=self.settings_manager
-        )
-        self.fields['creator'].set_value(  
-            self.settings_manager.get("user.creator_name", "Anonymous")
+            settings_manager=self.settings_manager,
+            min_height=25,
+            max_height=25
         )
         top_row.addWidget(self.fields['creator'])
-
         
-        main_layout.addRow("", top_row)
+        main_layout.addLayout(top_row)
         
-        # Add core fields
-        for field in FieldName:
-            if field != FieldName.NAME:  # Already handled in top row
-                self.fields[field.value] = EditableField(
-                    field.value.replace('_', ' ').title(),
-                    ui_manager=self.ui_manager,
-                    settings_manager=self.settings_manager
-                )
-                main_layout.addRow("", self.fields[field.value])
+        # Multi-line fields
+        multiline_fields = ['description', 'scenario', 'personality']
+        for field in multiline_fields:
+            self.fields[field] = EditableField(
+                field.title(),
+                multiline=True,
+                ui_manager=self.ui_manager,
+                settings_manager=self.settings_manager,
+                min_height=100,
+                max_height=300
+            )
+            main_layout.addWidget(self.fields[field])
         
         main_group.setLayout(main_layout)
         form_layout.addWidget(main_group)
         
-        # Messages Group
+        # Messages group
         msg_group = QGroupBox("Messages")
         msg_layout = QVBoxLayout()
+        msg_layout.setSpacing(10)
+        msg_layout.setContentsMargins(10, 10, 10, 10)
         
-        # Initialize alternate greetings widget
+        # Set size policy to not stretch
+        msg_group.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Maximum
+        )
+        # First message
+        self.fields['first_mes'] = EditableField(
+            "First Message",
+            multiline=True,
+            ui_manager=self.ui_manager,
+            settings_manager=self.settings_manager,
+            min_height=100,
+            max_height=300
+        )
+        msg_layout.addWidget(self.fields['first_mes'])
+        
+        # Alternate greetings
         self.alt_greetings = AlternateGreetingsWidget(
             self.ui_manager,
-            self.settings_manager
+            self.settings_manager,
+            min_height=100,
+            max_height=300
         )
         msg_layout.addWidget(self.alt_greetings)
+        
+        # Message examples
+        self.fields['mes_example'] = EditableField(
+            "Message Examples",
+            multiline=True,
+            ui_manager=self.ui_manager,
+            settings_manager=self.settings_manager,
+            min_height=100,
+            max_height=300
+        )
+        msg_layout.addWidget(self.fields['mes_example'])
         
         msg_group.setLayout(msg_layout)
         form_layout.addWidget(msg_group)
         
-        # Additional Settings Group
-        additional_group = QGroupBox("Additional Settings")
-        additional_layout = QVBoxLayout()
-        
-        # Add metadata fields
-        for field in CardField:
-            if field.value not in [f.value for f in FieldName]:
-                self.fields[field.value] = EditableField(
-                    field.value.replace('_', ' ').title(),
-                    ui_manager=self.ui_manager,
-                    settings_manager=self.settings_manager
-                )
-                additional_layout.addWidget(self.fields[field.value])
-        
-        # Tags field
-        self.fields['tags'] = EditableField(
-            "Tags", multiline=False,
-            ui_manager=self.ui_manager,
-            settings_manager=self.settings_manager
-        )
-        additional_layout.addWidget(self.fields['tags'])
-        
-        additional_group.setLayout(additional_layout)
-        form_layout.addWidget(additional_group)
-        
-        right_panel.setWidget(form_container)
-        layout.addWidget(right_panel, stretch=1)
+        right_scroll.setWidget(form_container)
+        layout.addWidget(right_scroll, stretch=1)
         
         self.setLayout(layout)
-    
+        form_layout.addStretch()
+        
     def _handle_character_loaded(self, character: CharacterData):
         """Handle loaded character"""
         print(f"EditorTab: Loading character {character.name}")

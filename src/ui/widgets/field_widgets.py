@@ -53,11 +53,19 @@ class BaseFieldWidget(QWidget):
     def _create_header(self) -> QWidget:
         """Create header with common controls"""
         header = QWidget()
+        header.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Fixed
+        )
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 0)
         
         # Field label
         label = QLabel(self.field.value.replace('_', ' ').title())
+        font = label.font()
+        font.setBold(True)
+        label.setFont(font)
+        label.setFixedHeight(25)
         header_layout.addWidget(label)
         
         # Regeneration buttons
@@ -188,35 +196,49 @@ class CompactFieldWidget(BaseFieldWidget):
                  field: FieldName,
                  ui_manager: UIStateManager,
                  settings_manager: Optional[SettingsManager] = None,
+                 min_height: int = 100,
+                 max_height: int = 300,
                  parent: Optional[QWidget] = None):
+        self.min_height = min_height
+        self.max_height = max_height
         super().__init__(field, ui_manager, settings_manager, parent)
 
     def _create_editor_container(self) -> QWidget:
-        """Create editor container"""
         container = QWidget()
-        layout = QHBoxLayout()
+        layout = QVBoxLayout()  # Changed to QVBoxLayout
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(5)
         
-        # Create scroll area
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        
-        # Create input editor
-        input_container = QWidget()
-        input_layout = QVBoxLayout(input_container)
-        input_layout.setContentsMargins(0, 0, 0, 0)
-        
-        self.input = self._create_text_edit(f"Enter {self.field.value}...")
+        # Create input editor directly without scroll area
+        self.input = QTextEdit()
+        self.input.setAcceptRichText(False)
+        self.input.setPlaceholderText(f"Enter {self.field.value}...")
         self.input.textChanged.connect(self._handle_input_changed)
-        input_layout.addWidget(self.input)
+        self.input.document().contentsChanged.connect(self._adjust_height)
+        self.input.setMinimumHeight(self.min_height)
+        self.input.setMaximumHeight(self.max_height)
         
-        scroll.setWidget(input_container)
-        layout.addWidget(scroll)
-        
+        # Apply settings
+        if self.settings_manager:
+            font_size = self.settings_manager.get("ui.font_size", 10)
+            font = self.input.font()
+            font.setPointSize(font_size)
+            self.input.setFont(font)
+            
+        layout.addWidget(self.input)
         container.setLayout(layout)
         return container
+
+    def _adjust_height(self):
+        """Adjust height based on content"""
+        doc_height = self.input.document().size().height()
+        margins = self.input.contentsMargins()
+        needed_height = doc_height + margins.top() + margins.bottom() + 10
+
+        new_height = max(self.min_height, min(needed_height, self.max_height))
+        
+        if new_height != self.input.height():
+            self.input.setFixedHeight(int(new_height))
 
     def _handle_input_changed(self):
         """Handle input text changes"""
@@ -358,8 +380,10 @@ class MessageExampleWidget(CompactFieldWidget):
                  field: FieldName,
                  ui_manager: UIStateManager,
                  settings_manager: Optional[SettingsManager] = None,
+                 min_height: int = 100,
+                 max_height: int = 300,
                  parent: Optional[QWidget] = None):
-        super().__init__(field, ui_manager, settings_manager, parent)
+        super().__init__(field, ui_manager, settings_manager, min_height, max_height, parent)
         self._add_append_controls()
     
     def _add_append_controls(self):
@@ -384,8 +408,10 @@ class FirstMessageWidget(CompactFieldWidget):
                  field: FieldName,
                  ui_manager: UIStateManager,
                  settings_manager: Optional[SettingsManager] = None,
+                 min_height: int = 100,
+                 max_height: int = 300,
                  parent: Optional[QWidget] = None):
-        super().__init__(field, ui_manager, settings_manager, parent)
+        super().__init__(field, ui_manager, settings_manager, min_height, max_height, parent)
         self._add_greeting_controls()
     
     def _add_greeting_controls(self):
@@ -523,13 +549,20 @@ class AlternateGreetingsWidget(QWidget):
     greeting_regenerated = pyqtSignal(int)
     greeting_added = pyqtSignal(str)
     
-    def __init__(self, ui_manager: UIStateManager, settings_manager: Optional[SettingsManager] = None, parent=None):
+    def __init__(self, 
+                 ui_manager: UIStateManager, 
+                 settings_manager: Optional[SettingsManager] = None, 
+                 min_height: int = 100,
+                 max_height: int = 300,
+                 parent=None):
         super().__init__(parent)
         self.ui_manager = ui_manager
         self.settings_manager = settings_manager
+        self.min_height = min_height
+        self.max_height = max_height
         self.greetings = []
         self.current_index = 0
-        self.is_updating = False  # Add local update tracking
+        self.is_updating = False 
         self._init_ui()
         
     def _init_ui(self):
@@ -544,11 +577,22 @@ class AlternateGreetingsWidget(QWidget):
         layout.setSpacing(5)
         
         # Controls bar
-        controls = QHBoxLayout()
-        controls.setContentsMargins(0, 0, 0, 0)
-        
+        controls = QWidget()
+        controls.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Fixed
+        )
+        controls_layout = QHBoxLayout()
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+        controls_layout.setSpacing(5)
+
         # Title
-        controls.addWidget(QLabel("Alternate Greetings"))
+        label = QLabel("Alternate Greetings")
+        font = label.font()
+        font.setBold(True)
+        label.setFont(font)
+        label.setFixedHeight(25)
+        controls_layout.addWidget(label)  
         
         # Navigation group
         nav_group = QHBoxLayout()
@@ -566,33 +610,35 @@ class AlternateGreetingsWidget(QWidget):
         self.next_btn.clicked.connect(self._next_greeting)
         nav_group.addWidget(self.next_btn)
         
-        controls.addLayout(nav_group)
-        controls.addStretch()
+        controls_layout.addLayout(nav_group)
+        controls_layout.addStretch()
         
         # Action buttons
         self.add_btn = QPushButton("+")
         self.add_btn.setFixedWidth(30)
         self.add_btn.clicked.connect(lambda: self.greeting_added.emit(""))
-        controls.addWidget(self.add_btn)
+        controls_layout.addWidget(self.add_btn) 
         
         self.remove_btn = QPushButton("-")
         self.remove_btn.setFixedWidth(30)
         self.remove_btn.clicked.connect(self._remove_current)
-        controls.addWidget(self.remove_btn)
+        controls_layout.addWidget(self.remove_btn) 
         
         self.regen_btn = QPushButton("🔄")
         self.regen_btn.setFixedWidth(30)
         self.regen_btn.clicked.connect(
             lambda: self.greeting_regenerated.emit(self.current_index)
         )
-        controls.addWidget(self.regen_btn)
+        controls_layout.addWidget(self.regen_btn) 
+        controls.setLayout(controls_layout)  # Set the layout for controls widget
+        layout.addWidget(controls)  # Add the controls widget to main layout
         
-        layout.addLayout(controls)
-        
-        # Text editor
+        # Text editor (remove duplicate definition)
         self.text_edit = QTextEdit()
         self.text_edit.setAcceptRichText(False)
-        self.text_edit.setMinimumHeight(100)
+        self.text_edit.setMinimumHeight(50)
+        self.text_edit.setMaximumHeight(self.max_height - 50)  # Account for controls
+        self.text_edit.document().contentsChanged.connect(self._adjust_height)
         self.text_edit.textChanged.connect(self._text_changed)
         
         if self.settings_manager:
@@ -607,6 +653,28 @@ class AlternateGreetingsWidget(QWidget):
         self.setVisible(False)
         
         self._update_controls()
+    
+    def _adjust_height(self):
+        """Adjust height based on content"""
+        # Get the document's size
+        doc_height = self.text_edit.document().size().height()
+        # Add margins
+        margins = self.text_edit.contentsMargins()
+        needed_height = doc_height + margins.top() + margins.bottom() + 10  # extra padding
+        
+        # Calculate available height (account for controls)
+        controls_height = 50  # Approximate height of controls
+        max_text_height = self.max_height - controls_height
+        min_text_height = 50
+        
+        # Constrain to min/max
+        new_height = max(min_text_height, min(needed_height, max_text_height))
+        
+        # Only resize if needed
+        if new_height != self.text_edit.height():
+            self.text_edit.setFixedHeight(int(new_height))
+            # Adjust total widget height
+            self.setFixedHeight(int(new_height + controls_height))
 
     def update_greeting(self, index: int, text: str):
         """Update a specific greeting"""
