@@ -95,7 +95,7 @@ class GenerationTab(QWidget):
                     parent=self
                 )
             elif field == FieldName.FIRST_MES:
-                self.input_widgets[field] = FirstMessageWidget(
+                widget = FirstMessageWidget(
                     field=field,
                     ui_manager=self.ui_manager,
                     settings_manager=self.settings_manager,
@@ -103,6 +103,8 @@ class GenerationTab(QWidget):
                     max_height=300,
                     parent=self
                 )
+                widget.greeting_requested.connect(self._handle_greeting_requested)
+                self.input_widgets[field] = widget
             else:
                 self.input_widgets[field] = CompactFieldWidget(
                     field=field,
@@ -201,6 +203,70 @@ class GenerationTab(QWidget):
         
         self.setLayout(layout)
 
+    def _handle_greeting_requested(self, field: FieldName):
+        """Handle request to generate new alternate greeting"""
+        if not self.character_manager.current_character:
+            self.ui_manager.show_status_message(
+                "No character loaded",
+                StatusLevel.WARNING
+            )
+            return
+        
+        # Get the input text from first message field
+        input_text = self.input_widgets[field].get_input()
+        
+        try:
+            # Create context for generation
+            context = self.generation_manager._create_context(
+                field,
+                input_text,
+                GenerationMode.GENERATE
+            )
+            
+            # Generate new greeting
+            result = self.generation_manager.generation_service.generate_field(
+                context,
+                force_new=True  # Always generate new content
+            )
+            
+            if result and not result.error:
+                # Get current greetings
+                current_greetings = (
+                    self.character_manager.current_character.alternate_greetings or []
+                ).copy()
+                
+                # Add new greeting
+                current_greetings.append(result.content)
+                
+                # Update character
+                self.character_manager.current_character.alternate_greetings = current_greetings
+                
+                # Update UI
+                if hasattr(self, 'alt_greetings_widget'):
+                    self.alt_greetings_widget.add_greeting(result.content)
+                
+                # Emit character updated signal
+                self.character_updated.emit(
+                    self.character_manager.current_character,
+                    "alternate_greetings"
+                )
+                
+                self.ui_manager.show_status_message(
+                    "New alternate greeting generated",
+                    StatusLevel.SUCCESS
+                )
+            else:
+                self.ui_manager.show_status_message(
+                    "Failed to generate greeting",
+                    StatusLevel.ERROR
+                )
+                
+        except Exception as e:
+            self.ui_manager.show_status_message(
+                f"Error generating greeting: {str(e)}",
+                StatusLevel.ERROR
+            )
+        
     def _adjust_output_height(self, text_edit: QTextEdit):
         """Adjust output field height based on content"""
         if not text_edit:
@@ -432,7 +498,10 @@ class GenerationTab(QWidget):
                     
         self.is_updating = True
         try:
-            if updated_field:
+            if updated_field == "alternate_greetings":
+                if hasattr(self, 'alt_greetings_widget'):
+                    self.alt_greetings_widget.set_greetings(character.alternate_greetings)
+            elif updated_field:
                 try:
                     field = FieldName(updated_field)
                     if field in self.output_texts:

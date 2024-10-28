@@ -550,12 +550,15 @@ class EditorTab(QWidget):
         """Handle updates from other tabs"""
         if self.is_updating:
             return
-            
+                
         self.is_updating = True
         try:
             self.current_character = character
-            
-            if updated_field == "image":
+            if updated_field == "alternate_greetings":
+                if hasattr(self, 'alt_greetings'):  # Changed from alt_greetings_widget to alt_greetings
+                    print(f"Editor Tab: Updating alternate greetings, count: {len(character.alternate_greetings) if character.alternate_greetings else 0}")  # Debug log
+                    self.alt_greetings.set_greetings(character.alternate_greetings or [])
+            elif updated_field == "image":
                 if character.image_data:
                     qimage = ImageQt(character.image_data)
                     self.image_frame.setPixmap(QPixmap.fromImage(qimage))
@@ -584,10 +587,9 @@ class EditorTab(QWidget):
                                 )
                             except ValueError:
                                 pass
-                
         finally:
             self.is_updating = False
-
+            
     def closeEvent(self, event):
         """Handle tab closing"""
         if self.character_manager.is_modified:

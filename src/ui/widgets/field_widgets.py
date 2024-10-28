@@ -421,12 +421,17 @@ class FirstMessageWidget(CompactFieldWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         
         greeting_btn = QPushButton("Add Alternate Greeting")
-        greeting_btn.clicked.connect(lambda: self.greeting_requested.emit(self.field))
+        greeting_btn.clicked.connect(self._handle_add_greeting)
         layout.addWidget(greeting_btn)
         
         layout.addStretch()
         
         self.layout.addWidget(controls)
+    
+    def _handle_add_greeting(self):
+        """Handle add greeting button click"""
+        # Pass the current input text with the signal
+        self.greeting_requested.emit(self.field)
 
 class FieldViewManager:
     """Manages expanded field views"""
