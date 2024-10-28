@@ -1,13 +1,9 @@
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 import yaml
-from .exceptions import InvalidConfigError, ConfigError
+import logging
 
-from dataclasses import dataclass, field
-from typing import Dict, Any, Optional
-from pathlib import Path
-import yaml
 from .exceptions import InvalidConfigError, ConfigError
 
 @dataclass
@@ -20,10 +16,9 @@ class ApiConfig:
     retry_delay: int = 1
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for saving"""
         return {
-            'API_URL': self.url,
-            'API_KEY': self.key,
+            'url': self.url,
+            'key': self.key,
             'timeout': self.timeout,
             'max_retries': self.max_retries,
             'retry_delay': self.retry_delay
@@ -31,10 +26,9 @@ class ApiConfig:
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ApiConfig':
-        """Create instance from dictionary"""
         return cls(
-            url=data.get('API_URL', ''),
-            key=data.get('API_KEY'),
+            url=data.get('url', ''),
+            key=data.get('key'),
             timeout=data.get('timeout', 420),
             max_retries=data.get('max_retries', 3),
             retry_delay=data.get('retry_delay', 1)
@@ -44,59 +38,161 @@ class ApiConfig:
 class GenerationConfig:
     """Generation-related settings"""
     max_tokens: int = 2048
+    auto_save: bool = False
+    auto_save_interval: int = 300
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for saving"""
         return {
             'max_tokens': self.max_tokens,
+            'auto_save': self.auto_save,
+            'auto_save_interval': self.auto_save_interval
         }
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'GenerationConfig':
-        """Create instance from dictionary"""
         return cls(
             max_tokens=data.get('max_tokens', 2048),
+            auto_save=data.get('auto_save', False),
+            auto_save_interval=data.get('auto_save_interval', 300)
         )
 
+@dataclass
+class UserConfig:
+    """User-related settings"""
+    creator_name: str = "Anonymous"
+    default_save_format: str = "json"
+    save_path: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'creator_name': self.creator_name,
+            'default_save_format': self.default_save_format,
+            'save_path': self.save_path
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'UserConfig':
+        return cls(
+            creator_name=data.get('creator_name', 'Anonymous'),
+            default_save_format=data.get('default_save_format', 'json'),
+            save_path=data.get('save_path', '')
+        )
+
+@dataclass
+class UIConfig:
+    """UI-related settings"""
+    theme: str = "light"
+    font_size: int = 10
+    show_status_bar: bool = True
+    show_toolbar: bool = True
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'theme': self.theme,
+            'font_size': self.font_size,
+            'show_status_bar': self.show_status_bar,
+            'show_toolbar': self.show_toolbar
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'UIConfig':
+        return cls(
+            theme=data.get('theme', 'light'),
+            font_size=data.get('font_size', 10),
+            show_status_bar=data.get('show_status_bar', True),
+            show_toolbar=data.get('show_toolbar', True)
+        )
 
 @dataclass
 class PathConfig:
     """File path configuration"""
     base_dir: Path = field(default_factory=lambda: Path.cwd())
+    character_dir: str = "data/characters"
+    prompt_dir: str = "data/base_prompts"
+    config_dir: str = "data/config"
+    logs_dir: str = "data/logs"
     
     def __post_init__(self):
-        self.data_dir = self.base_dir / "data"
-        self.characters_dir = self.data_dir / "characters"
-        self.base_prompts_dir = self.data_dir / "base_prompts"
-        self.config_dir = self.data_dir / "config"
-        self.logs_dir = self.data_dir / "logs"
+        """Initialize paths after creation"""
+        self.characters_dir = self.base_dir / self.character_dir
+        self.base_prompts_dir = self.base_dir / self.prompt_dir
+        self.config_dir = self.base_dir / self.config_dir
+        self.logs_dir = self.base_dir / self.logs_dir
         
-        # Create directories if they don't exist
+        # Create directories
         for directory in [
-            self.data_dir,
-            self.characters_dir, 
+            self.characters_dir,
             self.base_prompts_dir,
             self.config_dir,
             self.logs_dir
         ]:
             directory.mkdir(parents=True, exist_ok=True)
 
-@dataclass
-class UserConfig:
-    """User-related settings"""
-    creator_name: str = "Anonymous"
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for saving"""
+    def to_dict(self) -> Dict[str, str]:
         return {
-            'creator_name': self.creator_name
+            'base_dir': str(self.base_dir),
+            'character_dir': self.character_dir,
+            'prompt_dir': self.prompt_dir,
+            'config_dir': self.config_dir,
+            'logs_dir': self.logs_dir
         }
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'UserConfig':
-        """Create instance from dictionary"""
+    def from_dict(cls, data: Dict[str, Any]) -> 'PathConfig':
         return cls(
-            creator_name=data.get('creator_name', 'Anonymous')
+            base_dir=Path(data.get('base_dir', str(Path.cwd()))),
+            character_dir=data.get('character_dir', 'data/characters'),
+            prompt_dir=data.get('prompt_dir', 'data/base_prompts'),
+            config_dir=data.get('config_dir', 'data/config'),
+            logs_dir=data.get('logs_dir', 'data/logs')
+        )
+
+@dataclass
+class WindowConfig:
+    """Window state configuration"""
+    geometry: Optional[bytes] = None
+    state: Optional[bytes] = None
+    size: Tuple[int, int] = (1024, 768)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'geometry': self.geometry,
+            'state': self.state,
+            'size': {'width': self.size[0], 'height': self.size[1]}
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'WindowConfig':
+        size_data = data.get('size', {})
+        return cls(
+            geometry=data.get('geometry'),
+            state=data.get('state'),
+            size=(
+                size_data.get('width', 1024),
+                size_data.get('height', 768)
+            )
+        )
+
+@dataclass
+class DebugConfig:
+    """Debug settings"""
+    logging_level: str = "INFO"
+    enable_console_logging: bool = True
+    enable_file_logging: bool = True
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'logging_level': self.logging_level,
+            'enable_console_logging': self.enable_console_logging,
+            'enable_file_logging': self.enable_file_logging
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'DebugConfig':
+        return cls(
+            logging_level=data.get('logging_level', 'INFO'),
+            enable_console_logging=data.get('enable_console_logging', True),
+            enable_file_logging=data.get('enable_file_logging', True)
         )
 
 @dataclass
@@ -105,7 +201,11 @@ class AppConfig:
     api: ApiConfig
     generation: GenerationConfig
     user: UserConfig
+    ui: UIConfig
     paths: PathConfig
+    window: WindowConfig
+    debug: DebugConfig
+    recent_files: List[str] = field(default_factory=list)
     
     @classmethod
     def load(cls, config_path: Path) -> 'AppConfig':
@@ -114,21 +214,15 @@ class AppConfig:
             with open(config_path, 'r') as f:
                 data = yaml.safe_load(f)
             
-            # Parse configurations
-            api_config = ApiConfig.from_dict(data)
-            gen_data = data.get('generation', {})
-            gen_config = GenerationConfig.from_dict(gen_data)
-            user_data = data.get('user', {})
-            user_config = UserConfig.from_dict(user_data)
-            
-            # Set up paths
-            path_config = PathConfig(base_dir=Path(data.get('base_dir', Path.cwd())))
-            
             return cls(
-                api=api_config,
-                generation=gen_config,
-                user=user_config,
-                paths=path_config
+                api=ApiConfig.from_dict(data.get('api', {})),
+                generation=GenerationConfig.from_dict(data.get('generation', {})),
+                user=UserConfig.from_dict(data.get('user', {})),
+                ui=UIConfig.from_dict(data.get('ui', {})),
+                paths=PathConfig.from_dict(data.get('paths', {})),
+                window=WindowConfig.from_dict(data.get('window', {})),
+                debug=DebugConfig.from_dict(data.get('debug', {})),
+                recent_files=data.get('recent_files', [])
             )
             
         except yaml.YAMLError as e:
@@ -140,10 +234,14 @@ class AppConfig:
         """Save current configuration to YAML file"""
         try:
             config_data = {
-                **self.api.to_dict(),
+                'api': self.api.to_dict(),
                 'generation': self.generation.to_dict(),
                 'user': self.user.to_dict(),
-                'base_dir': str(self.paths.base_dir)
+                'ui': self.ui.to_dict(),
+                'paths': self.paths.to_dict(),
+                'window': self.window.to_dict(),
+                'debug': self.debug.to_dict(),
+                'recent_files': self.recent_files
             }
             
             with open(config_path, 'w') as f:
@@ -151,7 +249,7 @@ class AppConfig:
                 
         except Exception as e:
             raise ConfigError(f"Error saving configuration: {str(e)}")
-            
+
 # Global configuration instance
 _config: Optional[AppConfig] = None
 

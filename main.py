@@ -2,33 +2,53 @@
 import sys
 import logging
 import json
+import os
 from pathlib import Path
 from datetime import datetime
 from PyQt6.QtWidgets import QApplication, QMessageBox, QSplashScreen
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtCore import Qt
+
 from src.core.config import AppConfig, get_config
+from src.core.enums import StatusLevel, EventType
+from src.core.managers import (
+    CharacterStateManager,
+    GenerationManager,
+    SettingsManager,
+    UIStateManager
+)
+
+from src.services.api_service import ApiService
+from src.services.character_service import CharacterService
+from src.services.generation_service import GenerationService
+from src.services.prompt_service import PromptService
 from src.ui.main_window import MainWindow
 from src.core.exceptions import ConfigError, FileError
 
-def setup_logging():
-    """Configure application logging"""
+def setup_logging(config: AppConfig) -> logging.Logger:
+    """Configure application logging based on config"""
     # Create logs directory
-    log_dir = Path("logs")
+    log_dir = config.paths.logs_dir
     log_dir.mkdir(exist_ok=True)
     
     # Set up log file with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = log_dir / f"charactergen_{timestamp}.log"
     
+    # Configure logging based on debug settings
+    handlers = []
+    
+    if config.debug.enable_file_logging:
+        handlers.append(logging.FileHandler(log_file))
+    
+    if config.debug.enable_console_logging:
+        handlers.append(logging.StreamHandler(sys.stdout))
+    
     # Configure logging
     logging.basicConfig(
-        level=logging.INFO,
+        level=getattr(logging, config.debug.logging_level),
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler(sys.stdout)
-        ]
+        handlers=handlers
     )
     
     # Create logger for this module
@@ -39,9 +59,9 @@ def check_dependencies() -> bool:
     """Check if all required dependencies are available"""
     required_packages = {
         "PyQt6": "GUI framework",
-        "PIL": "Image processing",  # Changed from "Pillow" to "PIL"
+        "PIL": "Image processing",
         "requests": "API communication",
-        "yaml": "Configuration handling"  # Changed from "pyyaml" to "yaml"
+        "yaml": "Configuration handling"
     }
     
     missing_packages = []
@@ -66,102 +86,85 @@ def check_dependencies() -> bool:
     
     return True
 
-def check_directories() -> bool:
+def check_directories(config: AppConfig) -> bool:
     """Check and create required directories"""
     try:
-        data_dir = Path("data")
+        # Directories are created in PathConfig initialization
+        # Just verify they exist and are writable
         required_dirs = [
-            data_dir / "characters",
-            data_dir / "base_prompts",
-            data_dir / "config",
-            data_dir / "logs"
+            config.paths.characters_dir,
+            config.paths.base_prompts_dir,
+            config.paths.config_dir,
+            config.paths.logs_dir
         ]
         
         for directory in required_dirs:
-            directory.mkdir(parents=True, exist_ok=True)
+            if not directory.exists():
+                raise FileError(f"Required directory does not exist: {directory}")
+            if not os.access(directory, os.W_OK):
+                raise FileError(f"Directory is not writable: {directory}")
             
-        # Check for template.json
-        template_path = data_dir / "config" / "template.json"
-        if not template_path.exists():
-            with open(template_path, 'w') as f:
-                json.dump({
-                    "data": {
-                        "name": "",
-                        "description": "",
-                        "personality": "",
-                        "first_mes": "",
-                        "mes_example": "",
-                        "scenario": "",
-                        "creator_notes": "",
-                        "system_prompt": "",
-                        "post_history_instructions": "",
-                        "alternate_greetings": [],
-                        "tags": []
-                    },
-                    "spec": "chara_card_v2",
-                    "spec_version": "2.0"
-                }, f, indent=2)
         return True
+        
     except Exception as e:
         QMessageBox.critical(
             None,
             "Directory Error",
-            f"Error creating required directories: {str(e)}"
+            f"Error with application directories: {str(e)}"
         )
         return False
-    
-def check_config() -> bool:
-    """Check configuration file"""
-    config_path = Path("data/config/config.yaml")
-    
-    if not config_path.exists():
-        try:
-            # Create default configuration
-            default_config = {
-                "API_URL": "http://127.0.0.1:5000/v1/chat/completions",
-                "API_KEY": "",
-                "timeout": 420,
-                "max_retries": 3,
-                "retry_delay": 1,
-                "generation": {
-                    "max_tokens": 2048,
-                },
-                "user": {
-                    "creator_name": "Anonymous"
-                }
-            }
-            
-            import yaml
-            with open(config_path, 'w') as f:
-                yaml.safe_dump(default_config, f, default_flow_style=False)
-            
-            QMessageBox.information(
-                None,
-                "Configuration Created",
-                f"Default configuration file created\n"
-                "Please edit it within Edit->Preferences before Generating."
-            )
-            
-        except Exception as e:
-            QMessageBox.critical(
-                None,
-                "Configuration Error",
-                f"Error creating default configuration: {str(e)}"
-            )
-            return False
-    
-    return True
 
 def create_splash_screen() -> QSplashScreen:
     """Create and return a splash screen"""
     # Create a basic splash screen
-    # In practice, you might want to replace this with an actual image
     pixmap = QPixmap(400, 200)
     pixmap.fill(Qt.GlobalColor.white)
     
     splash = QSplashScreen(pixmap)
     splash.show()
     return splash
+
+def initialize_managers(config: AppConfig, logger: logging.Logger):
+    """Initialize all managers and services"""
+    try:
+        # Initialize services first
+        api_service = ApiService(config)
+        character_service = CharacterService(config.paths)
+        prompt_service = PromptService(config.paths)
+        generation_service = GenerationService(api_service, prompt_service)
+        
+        # Create managers in dependency order
+        settings_manager = SettingsManager()
+        ui_manager = UIStateManager()
+        character_manager = CharacterStateManager(character_service)
+        generation_manager = GenerationManager(generation_service, character_manager)
+        
+        # Connect manager signals for logging
+        ui_manager.status_message.connect(
+            lambda msg, level: logger.log(
+                logging.INFO if level == StatusLevel.INFO else logging.WARNING,
+                msg
+            )
+        )
+        
+        return {
+            'managers': {
+                'settings_manager': settings_manager,
+                'ui_manager': ui_manager,
+                'character_manager': character_manager,
+                'generation_manager': generation_manager
+            },
+            'services': {
+                'api_service': api_service,
+                'character_service': character_service,
+                'prompt_service': prompt_service,
+                'generation_service': generation_service
+            }
+        }
+    
+    except Exception as e:
+        logger.error(f"Error initializing managers: {str(e)}")
+        raise
 
 def main():
     """Main application entry point"""
@@ -171,46 +174,71 @@ def main():
     app.setApplicationVersion("2.3.0")
     app.setOrganizationName("CharacterGen")
     
-    # Set up logging
-    logger = setup_logging()
-    logger.info("Starting Character Generator")
-    
-    # Show splash screen
-    splash = create_splash_screen()
-    splash.showMessage("Checking dependencies...", 
-                      Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter)
-    app.processEvents()
-    
     try:
+        # Show splash screen
+        splash = create_splash_screen()
+        splash.showMessage(
+            "Starting Character Generator...",
+            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter
+        )
+        app.processEvents()
+        
+        # Load configuration
+        splash.showMessage(
+            "Loading configuration...",
+            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter
+        )
+        config = get_config()
+        
+        # Set up logging
+        logger = setup_logging(config)
+        logger.info("Starting Character Generator")
+        
         # Perform startup checks
         checks = [
-            (check_dependencies, "Checking dependencies..."),
-            (check_directories, "Creating directories..."),
-            (check_config, "Checking configuration...")
+            ("Checking dependencies...", check_dependencies),
+            ("Checking directories...", lambda: check_directories(config))
         ]
         
-        for check_func, message in checks:
-            splash.showMessage(message, 
-                             Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter)
+        for message, check_func in checks:
+            splash.showMessage(
+                message,
+                Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter
+            )
             app.processEvents()
             
             if not check_func():
                 logger.error(f"Startup check failed: {message}")
                 return 1
         
-        # Load configuration
-        splash.showMessage("Loading configuration...", 
-                         Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter)
+        # Initialize managers
+        splash.showMessage(
+            "Initializing managers...",
+            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter
+        )
         app.processEvents()
         
-        config = get_config()
+        initialized = initialize_managers(config, logger)
+        managers = initialized['managers']
+        services = initialized['services']
         
         # Create and show main window
-        splash.showMessage("Starting application...", 
-                         Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter)
+        splash.showMessage(
+            "Creating main window...",
+            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter
+        )
         app.processEvents()
         
-        window = MainWindow()
+        window = MainWindow(
+            settings_manager=managers['settings_manager'],
+            ui_manager=managers['ui_manager'],
+            character_manager=managers['character_manager'],
+            generation_manager=managers['generation_manager'],
+            api_service=services['api_service'],
+            character_service=services['character_service'],
+            prompt_service=services['prompt_service'],
+            generation_service=services['generation_service']
+        )
         window.show()
         
         # Close splash screen
@@ -219,15 +247,6 @@ def main():
         # Start event loop
         logger.info("Application started successfully")
         return app.exec()
-        
-    except ConfigError as e:
-        logger.error(f"Configuration error: {str(e)}")
-        QMessageBox.critical(
-            None,
-            "Configuration Error",
-            f"Error in configuration: {str(e)}"
-        )
-        return 1
         
     except Exception as e:
         logger.critical(f"Unhandled exception: {str(e)}", exc_info=True)

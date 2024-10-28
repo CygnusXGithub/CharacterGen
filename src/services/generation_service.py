@@ -1,20 +1,18 @@
-from typing import Dict, Optional, Callable, List, Any
-from dataclasses import dataclass
+from typing import Dict, Optional, List, Set, Tuple
+import logging
 from datetime import datetime
 
-from ..core.models import GenerationContext, GenerationResult, CharacterData
+from ..core.models import (
+    GenerationContext, GenerationResult, GenerationCallbacks,
+    CharacterData, PromptTemplate
+)
 from ..core.enums import FieldName, GenerationMode
-from ..core.exceptions import GenerationError, DependencyError
+from ..core.exceptions import (
+    GenerationError, DependencyError, ValidationError,
+    ApiError, ApiTimeoutError
+)
 from .api_service import ApiService
 from .prompt_service import PromptService
-
-@dataclass
-class GenerationCallbacks:
-    """Callbacks for generation progress and results"""
-    on_start: Optional[Callable[[FieldName], None]] = None
-    on_progress: Optional[Callable[[FieldName, str], None]] = None
-    on_result: Optional[Callable[[FieldName, GenerationResult], None]] = None
-    on_error: Optional[Callable[[FieldName, Exception], None]] = None
 
 class GenerationService:
     """Handles character field generation logic"""
@@ -22,207 +20,293 @@ class GenerationService:
     def __init__(self, api_service: ApiService, prompt_service: PromptService):
         self.api_service = api_service
         self.prompt_service = prompt_service
-        self.generation_history: Dict[FieldName, List[GenerationResult]] = {}
-    
-    def generate_field(self, context: GenerationContext) -> GenerationResult:
+        self._generation_history: Dict[FieldName, List[GenerationResult]] = {}
+        self._generation_cache: Dict[str, GenerationResult] = {}
+        self._is_generating = False
+        self._pending_fields: List[Tuple[FieldName, str, GenerationMode]] = []
+        
+    @property
+    def is_generating(self) -> bool:
+        """Check if generation is in progress"""
+        return self._is_generating
+
+    def generate_field(self, context: GenerationContext,
+                      callbacks: Optional[GenerationCallbacks] = None) -> GenerationResult:
         """Generate content for a single field"""
-        try:
-            # Get the prompt template
-            template = self.prompt_service.current_set.templates.get(context.current_field)
-            if not template:
-                raise GenerationError(f"No template found for field {context.current_field.value}")
+        if self._is_generating:
+            raise GenerationError("Generation already in progress")
             
-            # Validate dependencies
-            available_fields = set(context.available_fields.keys())
-            if not self.prompt_service.validate_dependencies(template, available_fields):
-                missing = template.required_fields - available_fields
+        try:
+            self._is_generating = True
+            
+            # Validate context
+            self._validate_context(context)
+            
+            # Get prompt template
+            template = self._get_template(context.current_field)
+            
+            # Check dependencies
+            if not self._validate_dependencies(template, context):
                 raise DependencyError(
                     context.current_field.value,
-                    [f.value for f in missing]
+                    list(template.required_fields - set(context.character_data.fields.keys()))
                 )
             
             # Handle direct input mode
             if context.generation_mode == GenerationMode.DIRECT:
-                return GenerationResult(
-                    field=context.current_field,
-                    content=context.user_input,
-                    attempts=0
-                )
+                return self._handle_direct_input(context)
             
-            # Process the prompt template
+            # Check cache
+            cache_key = self._get_cache_key(context)
+            if cache_key in self._generation_cache:
+                return self._generation_cache[cache_key]
+            
+            # Process template
+            if callbacks and callbacks.on_start:
+                callbacks.on_start(context.current_field)
+            
             prompt = self.prompt_service.process_prompt(
                 template,
-                context.user_input,
-                context.available_fields
+                context.current_input,
+                context.character_data.fields
             )
             
-            # Generate content
-            content = self.api_service.generate_text(prompt)
+            if callbacks and callbacks.on_progress:
+                callbacks.on_progress(context.current_field, "Generating...")
             
-            # Create and store result
+            # Generate content
+            try:
+                content = self.api_service.generate_text(prompt)
+            except ApiTimeoutError:
+                if callbacks and callbacks.on_progress:
+                    callbacks.on_progress(context.current_field, "Retrying generation...")
+                content = self.api_service.generate_text(prompt)
+            
+            # Create result
             result = GenerationResult(
                 field=context.current_field,
                 content=content,
+                timestamp=datetime.now(),
                 attempts=self.api_service.last_response.attempts if self.api_service.last_response else 1
             )
             
+            # Update history and cache
             self._add_to_history(result)
+            self._generation_cache[cache_key] = result
+            
+            if callbacks and callbacks.on_result:
+                callbacks.on_result(context.current_field, result)
+            
             return result
             
         except Exception as e:
             error_result = GenerationResult(
                 field=context.current_field,
                 content="",
+                timestamp=datetime.now(),
                 error=e
             )
             self._add_to_history(error_result)
+            
+            if callbacks and callbacks.on_error:
+                callbacks.on_error(context.current_field, e)
+            
             raise
+        finally:
+            self._is_generating = False
+            self._process_pending()
     
-    def generate_field_with_deps(self, context: GenerationContext, 
-                               callbacks: Optional[GenerationCallbacks] = None) -> Dict[FieldName, GenerationResult]:
+    def generate_field_with_deps(self, 
+                                context: GenerationContext,
+                                callbacks: Optional[GenerationCallbacks] = None) -> Dict[FieldName, GenerationResult]:
+        """Generate a field and its dependents"""
         results = {}
         
-        # Get the ordered list of fields (only those with orders)
-        ordered_fields = self._get_ordered_fields()
-        if not ordered_fields:
-            raise GenerationError("No fields with generation order defined")
-        
-        # Find starting index
         try:
-            start_idx = ordered_fields.index(context.current_field)
-        except ValueError:
-            raise GenerationError(f"Field {context.current_field.value} not found in generation order")
-        
-        # Generate each field in order starting from the requested field
-        for field in ordered_fields[start_idx:]:
-            if callbacks and callbacks.on_start:
-                callbacks.on_start(field)
+            # Get ordered fields
+            ordered_fields = self._get_ordered_fields()
+            if not ordered_fields:
+                raise GenerationError("No fields with generation order defined")
             
+            # Find starting point
             try:
-                # Create new context for this field
-                field_context = GenerationContext(
-                    character_data=context.character_data,
-                    current_field=field,
-                    user_input=context.user_input if field == context.current_field else "",
-                    generation_mode=context.generation_mode if field == context.current_field 
-                                  else GenerationMode.GENERATE
-                )
-                
-                if callbacks and callbacks.on_progress:
-                    callbacks.on_progress(field, "Generating...")
-                
-                result = self.generate_field(field_context)
-                results[field] = result
-                
-                # Update character data with new result
-                context.character_data.fields[field] = result.content
-                
-                if callbacks and callbacks.on_result:
-                    callbacks.on_result(field, result)
-                
-            except Exception as e:
-                if callbacks and callbacks.on_error:
-                    callbacks.on_error(field, e)
-                results[field] = GenerationResult(
-                    field=field,
-                    content="",
-                    error=e
-                )
-                # Stop generation if there's an error
-                break
-        
-        return results
-    
-    def generate_alternate_greeting(self, 
-                                character: CharacterData,
-                                callbacks: Optional[GenerationCallbacks] = None) -> str:
-        """Generate an alternate greeting"""
-        if FieldName.FIRST_MES not in self.prompt_service.current_set.templates:
-            raise GenerationError("No template found for first message")
-        
-        try:
-            # Create a copy of character data to avoid modifying the original
-            temp_context = GenerationContext(
-                character_data=character,
-                current_field=FieldName.FIRST_MES,
-                user_input="Generate an alternate greeting",
-                generation_mode=GenerationMode.GENERATE
+                start_idx = ordered_fields.index(context.current_field)
+            except ValueError:
+                raise GenerationError(f"Field {context.current_field.value} not found in generation order")
+            
+            # Get fields that need regeneration
+            fields_to_generate = self._get_fields_to_regenerate(
+                ordered_fields[start_idx:],
+                context.changed_fields
             )
             
-            if callbacks and callbacks.on_start:
-                callbacks.on_start(FieldName.FIRST_MES)
+            total_fields = len(fields_to_generate)
             
-            # Generate new greeting without updating character's first_mes
-            result = self.generate_field(temp_context)
-            
-            if callbacks and callbacks.on_result:
-                # Modify callback to handle alternate greeting separately
-                alt_result = GenerationResult(
-                    field=FieldName.FIRST_MES,
-                    content=result.content,
-                    timestamp=result.timestamp,
-                    attempts=result.attempts,
-                    error=result.error
-                )
-                callbacks.on_result(FieldName.FIRST_MES, alt_result)
+            # Generate fields
+            for idx, field in enumerate(fields_to_generate):
+                if callbacks and callbacks.on_progress:
+                    callbacks.on_progress(
+                        field,
+                        f"Generating field {idx + 1}/{total_fields}..."
+                    )
                 
-            return result.content
+                try:
+                    field_context = self._create_field_context(
+                        context,
+                        field,
+                        context.field_inputs.get(field, "")
+                    )
+                    
+                    result = self.generate_field(field_context)
+                    results[field] = result
+                    
+                    # Update context with new content
+                    if not result.error:
+                        context.character_data.fields[field] = result.content
+                        context.changed_fields.add(field)
+                    
+                except Exception as e:
+                    results[field] = GenerationResult(
+                        field=field,
+                        content="",
+                        timestamp=datetime.now(),
+                        error=e
+                    )
+                    break
+            
+            return results
             
         except Exception as e:
-            if callbacks and callbacks.on_error:
-                callbacks.on_error(FieldName.FIRST_MES, e)
+            logging.error(f"Error in generate_field_with_deps: {str(e)}")
             raise
     
-    def append_message_example(self, 
-                             character: CharacterData,
-                             context_input: str = "",
-                             callbacks: Optional[GenerationCallbacks] = None) -> str:
-        """Generate and append a new message example"""
-        if FieldName.MES_EXAMPLE not in self.prompt_service.current_set.templates:
-            raise GenerationError("No template found for message examples")
-        
-        context = GenerationContext(
-            character_data=character,
-            current_field=FieldName.MES_EXAMPLE,
-            user_input=context_input,
-            generation_mode=GenerationMode.GENERATE
-        )
-        
-        if callbacks and callbacks.on_start:
-            callbacks.on_start(FieldName.MES_EXAMPLE)
-        
-        try:
-            result = self.generate_field(context)
-            if callbacks and callbacks.on_result:
-                callbacks.on_result(FieldName.MES_EXAMPLE, result)
-            return result.content
-        except Exception as e:
-            if callbacks and callbacks.on_error:
-                callbacks.on_error(FieldName.MES_EXAMPLE, e)
-            raise
+    def queue_generation(self, field: FieldName, input_text: str = "",
+                        mode: GenerationMode = GenerationMode.GENERATE):
+        """Queue a field for generation"""
+        self._pending_fields.append((field, input_text, mode))
+        if not self._is_generating:
+            self._process_pending()
     
-    def _get_ordered_fields(self) -> List[FieldName]:
-        """Get fields with order, sorted by order number"""
-        ordered_fields = [
-            (field, template.generation_order)
-            for field, template in self.prompt_service.current_set.templates.items()
-            if hasattr(template, 'generation_order') and template.generation_order >= 0
-        ]
-        return [field for field, _ in sorted(ordered_fields, key=lambda x: x[1])]
-    
-    def _add_to_history(self, result: GenerationResult) -> None:
-        """Add generation result to history"""
-        if result.field not in self.generation_history:
-            self.generation_history[result.field] = []
-        self.generation_history[result.field].append(result)
+    def clear_generation_queue(self):
+        """Clear pending generations"""
+        self._pending_fields.clear()
     
     def get_field_history(self, field: FieldName) -> List[GenerationResult]:
         """Get generation history for a field"""
-        return self.generation_history.get(field, [])
+        return self._generation_history.get(field, []).copy()
     
-    def clear_history(self, field: Optional[FieldName] = None) -> None:
-        """Clear generation history for a field or all fields"""
+    def clear_history(self, field: Optional[FieldName] = None):
+        """Clear generation history"""
         if field:
-            self.generation_history.pop(field, None)
+            self._generation_history.pop(field, None)
         else:
-            self.generation_history.clear()
+            self._generation_history.clear()
+    
+    def clear_cache(self):
+        """Clear generation cache"""
+        self._generation_cache.clear()
+    
+    def _validate_context(self, context: GenerationContext):
+        """Validate generation context"""
+        if not context.character_data:
+            raise ValidationError("No character data provided")
+        
+        if not context.current_field:
+            raise ValidationError("No field specified")
+    
+    def _get_template(self, field: FieldName) -> PromptTemplate:
+        """Get prompt template for field"""
+        if not self.prompt_service.current_set:
+            raise GenerationError("No prompt set loaded")
+            
+        template = self.prompt_service.current_set.templates.get(field)
+        if not template:
+            raise GenerationError(f"No template found for field {field.value}")
+            
+        return template
+    
+    def _validate_dependencies(self, template: PromptTemplate, 
+                             context: GenerationContext) -> bool:
+        """Validate template dependencies"""
+        return self.prompt_service.validate_dependencies(
+            template,
+            set(context.character_data.fields.keys())
+        )
+    
+    def _handle_direct_input(self, context: GenerationContext) -> GenerationResult:
+        """Handle direct input mode"""
+        return GenerationResult(
+            field=context.current_field,
+            content=context.current_input,
+            timestamp=datetime.now(),
+            attempts=0
+        )
+    
+    def _get_cache_key(self, context: GenerationContext) -> str:
+        """Generate cache key for context"""
+        return f"{context.current_field.value}:{hash(context.current_input)}"
+    
+    def _add_to_history(self, result: GenerationResult):
+        """Add result to generation history"""
+        if result.field not in self._generation_history:
+            self._generation_history[result.field] = []
+        self._generation_history[result.field].append(result)
+    
+    def _process_pending(self):
+        """Process pending generation requests"""
+        if not self._pending_fields or self._is_generating:
+            return
+            
+        field, input_text, mode = self._pending_fields.pop(0)
+        context = GenerationContext(
+            character_data=CharacterData("temp"),  # This should be provided by caller
+            current_field=field,
+            field_inputs={field: input_text},
+            generation_mode=mode
+        )
+        
+        try:
+            self.generate_field(context)
+        except Exception as e:
+            logging.error(f"Error processing pending generation: {str(e)}")
+    
+    def _get_ordered_fields(self) -> List[FieldName]:
+        """Get fields in generation order"""
+        return self.prompt_service.get_generation_order()
+    
+    def _get_fields_to_regenerate(self, 
+                                 fields: List[FieldName],
+                                 changed_fields: Set[FieldName]) -> List[FieldName]:
+        """Determine which fields need regeneration"""
+        fields_to_generate = set()
+        
+        for field in fields:
+            # Field needs regeneration if:
+            # 1. It's in the changed_fields set
+            # 2. Any of its dependencies have changed
+            deps = self.prompt_service.get_dependent_fields(field)
+            if (field in changed_fields or 
+                any(dep in changed_fields for dep in deps)):
+                fields_to_generate.add(field)
+                # Add fields that depend on this field
+                fields_to_generate.update(
+                    self.prompt_service.get_dependent_fields(field)
+                )
+        
+        # Return fields in correct order
+        return [f for f in fields if f in fields_to_generate]
+    
+    def _create_field_context(self, 
+                            base_context: GenerationContext,
+                            field: FieldName,
+                            input_text: str) -> GenerationContext:
+        """Create context for field generation"""
+        return GenerationContext(
+            character_data=base_context.character_data,
+            current_field=field,
+            field_inputs={field: input_text},
+            changed_fields=base_context.changed_fields.copy(),
+            generation_mode=(base_context.generation_mode 
+                           if field == base_context.current_field
+                           else GenerationMode.GENERATE)
+        )

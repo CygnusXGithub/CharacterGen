@@ -1,39 +1,42 @@
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
     QLineEdit, QSpinBox, QDoubleSpinBox, QDialogButtonBox,
-    QFormLayout, QGroupBox, QMessageBox, QScrollArea, QWidget
+    QFormLayout, QGroupBox, QMessageBox, QScrollArea, QWidget,
+    QCheckBox, QComboBox
 )
-import json
 from PyQt6.QtCore import Qt, pyqtSignal
-from ...core.config import AppConfig, get_config
-from ...core.exceptions import ConfigError
+
+from ...core.enums import ThemeType, StatusLevel
+from ...core.managers import SettingsManager, UIStateManager
 
 class PreferencesDialog(QDialog):
+    """Dialog for application preferences"""
     settings_updated = pyqtSignal()
     
-    def __init__(self, parent=None):
+    def __init__(self, 
+                settings_manager: SettingsManager,
+                ui_manager: UIStateManager,
+                parent=None):
         super().__init__(parent)
-        self.config = get_config()
+        self.settings_manager = settings_manager
+        self.ui_manager = ui_manager
+        self.setWindowTitle("Preferences")
+        self.setMinimumWidth(600)
         self._init_ui()
         self._load_settings()
     
     def _init_ui(self):
-        self.setWindowTitle("Preferences")
-        self.setMinimumWidth(500)
-        
-        # Create main layout
         main_layout = QVBoxLayout()
         
-        # Create scroll area
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         
-        # Create container for settings
         container = QWidget()
         layout = QVBoxLayout(container)
+        layout.setSpacing(20)
         
-        # API Settings Group
+        # API Settings
         api_group = QGroupBox("API Settings")
         api_layout = QFormLayout()
         
@@ -62,7 +65,7 @@ class PreferencesDialog(QDialog):
         api_group.setLayout(api_layout)
         layout.addWidget(api_group)
         
-        # Generation Settings Group
+        # Generation Settings
         gen_group = QGroupBox("Generation Settings")
         gen_layout = QFormLayout()
         
@@ -71,10 +74,23 @@ class PreferencesDialog(QDialog):
         self.max_tokens.setSingleStep(128)
         gen_layout.addRow("Max Tokens:", self.max_tokens)
         
+        self.auto_save = QCheckBox("Enable Auto-save")
+        gen_layout.addRow("Auto-save:", self.auto_save)
+        
+        self.auto_save_interval = QSpinBox()
+        self.auto_save_interval.setRange(30, 3600)
+        self.auto_save_interval.setSuffix(" seconds")
+        self.auto_save_interval.setEnabled(False)
+        gen_layout.addRow("Auto-save Interval:", self.auto_save_interval)
+        
+        self.auto_save.stateChanged.connect(
+            lambda state: self.auto_save_interval.setEnabled(state == Qt.CheckState.Checked)
+        )
+        
         gen_group.setLayout(gen_layout)
         layout.addWidget(gen_group)
         
-        # User Settings Group
+        # User Settings
         user_group = QGroupBox("User Settings")
         user_layout = QFormLayout()
         
@@ -82,85 +98,170 @@ class PreferencesDialog(QDialog):
         self.creator_name.setPlaceholderText("Anonymous")
         user_layout.addRow("Default Creator Name:", self.creator_name)
         
+        self.default_save_format = QComboBox()
+        self.default_save_format.addItems(['json', 'png'])
+        user_layout.addRow("Default Save Format:", self.default_save_format)
+        
         user_group.setLayout(user_layout)
         layout.addWidget(user_group)
         
-        # Set container as scroll area widget
+        # UI Settings
+        ui_group = QGroupBox("UI Settings")
+        ui_layout = QFormLayout()
+        
+        self.theme = QComboBox()
+        self.theme.addItems([theme.value for theme in ThemeType])
+        ui_layout.addRow("Theme:", self.theme)
+        
+        self.font_size = QSpinBox()
+        self.font_size.setRange(8, 24)
+        self.font_size.setValue(10)
+        ui_layout.addRow("Font Size:", self.font_size)
+        
+        self.show_status_bar = QCheckBox()
+        self.show_status_bar.setChecked(True)
+        ui_layout.addRow("Show Status Bar:", self.show_status_bar)
+        
+        self.show_toolbar = QCheckBox()
+        self.show_toolbar.setChecked(True)
+        ui_layout.addRow("Show Toolbar:", self.show_toolbar)
+        
+        ui_group.setLayout(ui_layout)
+        layout.addWidget(ui_group)
+        
         scroll.setWidget(container)
         main_layout.addWidget(scroll)
         
         # Dialog buttons
         button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | 
-            QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Save | 
+            QDialogButtonBox.StandardButton.Cancel |
+            QDialogButtonBox.StandardButton.Reset
         )
         button_box.accepted.connect(self._save_settings)
         button_box.rejected.connect(self.reject)
+        button_box.button(QDialogButtonBox.StandardButton.Reset).clicked.connect(
+            self._reset_settings
+        )
         main_layout.addWidget(button_box)
         
         self.setLayout(main_layout)
     
     def _load_settings(self):
+        """Load current settings"""
         try:
-            # Load API settings
-            self.api_url.setText(self.config.api.url)
-            self.api_key.setText(self.config.api.key or "")
-            self.timeout.setValue(self.config.api.timeout)
-            self.max_retries.setValue(self.config.api.max_retries)
-            self.retry_delay.setValue(self.config.api.retry_delay)
+            # API settings
+            self.api_url.setText(self.settings_manager.get("api.url", ""))
+            self.api_key.setText(self.settings_manager.get("api.key", ""))
+            self.timeout.setValue(self.settings_manager.get("api.timeout", 420))
+            self.max_retries.setValue(self.settings_manager.get("api.max_retries", 3))
+            self.retry_delay.setValue(self.settings_manager.get("api.retry_delay", 1))
             
-            # Load generation settings
-            self.max_tokens.setValue(self.config.generation.max_tokens)
+            # Generation settings
+            self.max_tokens.setValue(self.settings_manager.get("generation.max_tokens", 2048))
+            self.auto_save.setChecked(self.settings_manager.get("generation.auto_save", False))
+            self.auto_save_interval.setValue(
+                self.settings_manager.get("generation.auto_save_interval", 300)
+            )
             
-            # Load user settings
-            self.creator_name.setText(self.config.user.creator_name)
+            # User settings
+            self.creator_name.setText(
+                self.settings_manager.get("user.creator_name", "Anonymous")
+            )
+            self.default_save_format.setCurrentText(
+                self.settings_manager.get("user.default_save_format", "json")
+            )
+            
+            # UI settings
+            self.theme.setCurrentText(
+                self.settings_manager.get("ui.theme", ThemeType.LIGHT.value)
+            )
+            self.font_size.setValue(self.settings_manager.get("ui.font_size", 10))
+            self.show_status_bar.setChecked(
+                self.settings_manager.get("ui.show_status_bar", True)
+            )
+            self.show_toolbar.setChecked(
+                self.settings_manager.get("ui.show_toolbar", True)
+            )
             
         except Exception as e:
+            # Use QMessageBox instead of status message for dialog errors
             QMessageBox.warning(
                 self,
-                "Load Error",
+                "Settings Error",
                 f"Error loading settings: {str(e)}"
             )
     
     def _save_settings(self):
+        """Save current settings"""
         try:
-            # Validate URL
+            # Validate API URL
             if not self.api_url.text().strip():
                 raise ValueError("API URL cannot be empty")
             
-            # Update API configuration
-            self.config.api.url = self.api_url.text().strip()
-            self.config.api.key = self.api_key.text().strip() or None
-            self.config.api.timeout = self.timeout.value()
-            self.config.api.max_retries = self.max_retries.value()
-            self.config.api.retry_delay = self.retry_delay.value()
+            # API settings
+            self.settings_manager.set("api.url", self.api_url.text().strip())
+            self.settings_manager.set("api.key", self.api_key.text().strip() or None)
+            self.settings_manager.set("api.timeout", self.timeout.value())
+            self.settings_manager.set("api.max_retries", self.max_retries.value())
+            self.settings_manager.set("api.retry_delay", self.retry_delay.value())
             
-            # Update generation settings
-            self.config.generation.max_tokens = self.max_tokens.value()
+            # Generation settings
+            self.settings_manager.set("generation.max_tokens", self.max_tokens.value())
+            self.settings_manager.set("generation.auto_save", self.auto_save.isChecked())
+            self.settings_manager.set(
+                "generation.auto_save_interval",
+                self.auto_save_interval.value()
+            )
             
-            # Update user settings
-            self.config.user.creator_name = self.creator_name.text().strip() or "Anonymous"
+            # User settings
+            self.settings_manager.set(
+                "user.creator_name",
+                self.creator_name.text().strip() or "Anonymous"
+            )
+            self.settings_manager.set(
+                "user.default_save_format",
+                self.default_save_format.currentText()
+            )
             
-            # Save configuration
-            self.config.save(self.config.paths.config_dir / "config.yaml")
-            
-            # Update template.json
-            template_path = self.config.paths.config_dir / "template.json"
-            if template_path.exists():
-                with open(template_path, 'r') as f:
-                    template_data = json.load(f)
-                
-                template_data['data']['creator'] = self.config.user.creator_name
-                
-                with open(template_path, 'w') as f:
-                    json.dump(template_data, f, indent=2)
+            # UI settings
+            self.settings_manager.set("ui.theme", self.theme.currentText())
+            self.settings_manager.set("ui.font_size", self.font_size.value())
+            self.settings_manager.set("ui.show_status_bar", self.show_status_bar.isChecked())
+            self.settings_manager.set("ui.show_toolbar", self.show_toolbar.isChecked())
             
             self.settings_updated.emit()
+            self.ui_manager.show_status_message(
+                "Settings saved successfully",
+                StatusLevel.SUCCESS
+            )
             self.accept()
             
         except Exception as e:
+            self.ui_manager.show_status_message(
+                f"Error saving settings: {str(e)}",
+                StatusLevel.ERROR
+            )
             QMessageBox.critical(
                 self,
                 "Save Error",
                 f"Error saving settings: {str(e)}"
+            )
+    
+    def _reset_settings(self):
+        """Reset settings to defaults"""
+        reply = QMessageBox.question(
+            self,
+            "Reset Settings",
+            "Are you sure you want to reset all settings to defaults?",
+            QMessageBox.StandardButton.Yes | 
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.settings_manager.reset_all()
+            self._load_settings()
+            self.ui_manager.show_status_message(
+                "Settings reset to defaults",
+                StatusLevel.SUCCESS
             )

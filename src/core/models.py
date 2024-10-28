@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Any, Union, Callable
 from datetime import datetime
 from PIL import Image
+import re
 from .exceptions import MismatchedTagError
 from .enums import FieldName, CardFormat, GenerationMode, PromptTagType
 
@@ -65,7 +66,6 @@ class PromptTemplate:
     
     def __post_init__(self):
         self._validate_tags()
-        self._extract_required_fields()
     
     def _validate_tags(self) -> None:
         """Validate template tags"""
@@ -77,18 +77,6 @@ class PromptTemplate:
             raise MismatchedTagError(
                 f"Mismatched conditional tags: {open_tags} opening tags, {close_tags} closing tags"
             )
-    
-    def _extract_required_fields(self) -> None:
-        """Extract required fields from template text"""
-        import re
-        field_tags = re.findall(r'{{(\w+)}}', self.text)
-        
-        for tag in field_tags:
-            try:
-                if tag not in ['input', 'if_input', '/if_input', 'char', 'user']:
-                    self.required_fields.add(FieldName(tag))
-            except ValueError:
-                pass
 
 @dataclass
 class PromptSet:
@@ -142,18 +130,25 @@ class GenerationCallbacks:
 
 @dataclass
 class GenerationContext:
-    """Context for field generation"""
+    """Enhanced context for generation with input tracking"""
     character_data: CharacterData
     current_field: FieldName
-    user_input: str
+    field_inputs: Dict[FieldName, str] = field(default_factory=dict)
+    changed_fields: Set[FieldName] = field(default_factory=set)
     generation_mode: GenerationMode = GenerationMode.GENERATE
     max_retries: int = 3
     
     @property
-    def available_fields(self) -> Dict[FieldName, str]:
-        """Get fields available for use in generation"""
-        return {
-            field: value
-            for field, value in self.character_data.fields.items()
-            if field != self.current_field
-        }
+    def current_input(self) -> str:
+        """Get input for current field"""
+        return self.field_inputs.get(self.current_field, "")
+    
+    def update_field(self, field: FieldName, content: str):
+        """Update field content and mark as changed"""
+        if field not in self.character_data.fields or self.character_data.fields[field] != content:
+            self.character_data.fields[field] = content
+            self.changed_fields.add(field)
+    
+    def has_input(self, field: FieldName) -> bool:
+        """Check if field has input"""
+        return field in self.field_inputs and bool(self.field_inputs[field].strip())

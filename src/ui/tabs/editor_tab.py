@@ -1,329 +1,528 @@
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
+from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QLineEdit, QTextEdit, QPushButton, QFrame,
     QScrollArea, QGroupBox, QFormLayout, QFileDialog,
-    QSizePolicy
+    QSizePolicy, QMessageBox, QSplitter
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QPixmap, QImage
-from pathlib import Path
+from PyQt6.QtGui import QPixmap, QImage, QDragEnterEvent, QDropEvent
 from PIL import Image
 from PIL.ImageQt import ImageQt
 
-from ...core.enums import FieldName, CardField
+from ...core.enums import (
+    FieldName, CardField, CardFormat, UIMode,
+    StatusLevel, OperationType, ImageFormat
+)
 from ...core.models import CharacterData
-from ..widgets.field_widgets import AlternateGreetingsWidget
-
-class ImageFrame(QLabel):
-    """Frame for displaying and handling character image"""
-    image_changed = pyqtSignal(Image.Image)
-    
-    def __init__(self):
-        super().__init__()
-        self.setMinimumSize(300, 400)
-        self.setMaximumSize(300, 400)
-        self.setFrameShape(QFrame.Shape.Box)
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setAcceptDrops(True)
-        self._init_placeholder()
-        
-    def _init_placeholder(self):
-        """Set placeholder text/image"""
-        self.setText("Drop image here\nor click to upload")
-        self.setStyleSheet("""
-            QLabel {
-                background-color: #2b2b2b;
-                border: 2px dashed #666;
-                color: #666;
-            }
-        """)
-    
-    def mousePressEvent(self, event):
-        """Handle click to upload image"""
-        file_name, _ = QFileDialog.getOpenFileName(
-            self, "Select Image", "", 
-            "Images (*.png *.jpg *.jpeg)"
-        )
-        if file_name:
-            self._load_image(file_name)
-    
-    def dragEnterEvent(self, event):
-        if event.mimeData().hasUrls():
-            event.accept()
-        else:
-            event.ignore()
-    
-    def dropEvent(self, event):
-        files = [u.toLocalFile() for u in event.mimeData().urls()]
-        for file_path in files:
-            if file_path.lower().endswith(('.png', '.jpg', '.jpeg')):
-                self._load_image(file_path)
-                break
-    
-    def _load_image(self, file_path: str):
-        """Load and display image"""
-        try:
-            image = Image.open(file_path)
-            # Resize image maintaining aspect ratio
-            image.thumbnail((300, 400))
-            # Convert to QPixmap and display
-            qimage = ImageQt(image)
-            pixmap = QPixmap.fromImage(qimage)
-            self.setPixmap(pixmap)
-            # Emit the PIL Image
-            self.image_changed.emit(image)
-        except Exception as e:
-            # TODO: Show error message
-            pass
-
-class EditorField(QWidget):
-    """Field widget with label and optional token counter"""
-    value_changed = pyqtSignal(str)
-    
-    def __init__(self, label: str, multiline: bool = True, parent=None):
-        super().__init__(parent)
-        self._init_ui(label, multiline)
-    
-    def _init_ui(self, label: str, multiline: bool):
-        layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Header with label and token counter
-        header = QHBoxLayout()
-        header.addWidget(QLabel(label))
-        self.token_label = QLabel("0 characters, 0 tokens")
-        self.token_label.setStyleSheet("color: #666;")
-        header.addStretch()
-        header.addWidget(self.token_label)
-        layout.addLayout(header)
-        
-        # Text editor
-        if multiline:
-            self.editor = QTextEdit()
-            self.editor.setMinimumHeight(100)
-            self.editor.textChanged.connect(
-                lambda: self.value_changed.emit(self.editor.toPlainText())
-            )
-        else:
-            self.editor = QLineEdit()
-            self.editor.textChanged.connect(self.value_changed.emit)
-        
-        layout.addWidget(self.editor)
-        self.setLayout(layout)
-    
-    def set_text(self, text: str):
-        """Set editor text"""
-        if isinstance(self.editor, QTextEdit):
-            self.editor.setPlainText(text)
-        else:
-            self.editor.setText(text)
-    
-    def get_text(self) -> str:
-        """Get editor text"""
-        if isinstance(self.editor, QTextEdit):
-            return self.editor.toPlainText()
-        return self.editor.text()
-    
-    def update_tokens(self, chars: int, tokens: int):
-        """Update token counter"""
-        self.token_label.setText(f"{chars} characters, {tokens} tokens")
+from ...core.exceptions import CharacterLoadError, CharacterSaveError
+from ...core.managers import (
+    CharacterStateManager, UIStateManager,
+    SettingsManager
+)
+from ..widgets.field_widgets import (
+    EditableField, AlternateGreetingsWidget,
+    ImageFrame
+)
 
 class EditorTab(QWidget):
-    """Character editor tab"""
-    character_updated = pyqtSignal(CharacterData, str)  # When character data is modified (character, field_name)
+    """Tab for editing character data"""
     
-    def __init__(self, config, parent=None):
+    # Signals
+    character_loaded = pyqtSignal(CharacterData)         # When character is loaded
+    character_updated = pyqtSignal(CharacterData, str)   # When character is modified
+    status_update = pyqtSignal(str, StatusLevel)         # Status updates
+    operation_requested = pyqtSignal(OperationType, dict)  # Operation requests
+    
+    def __init__(self,
+                 character_manager: CharacterStateManager,
+                 ui_manager: UIStateManager,
+                 settings_manager: SettingsManager,
+                 parent=None):
         super().__init__(parent)
-        self.config = config
+        self.character_manager = character_manager
+        self.ui_manager = ui_manager
+        self.settings_manager = settings_manager
+        
+        # State tracking
         self.current_character: Optional[CharacterData] = None
-        self.fields: dict[str, EditorField] = {}
         self.is_updating = False
+        self.fields: Dict[str, EditableField] = {}
+        self.current_image: Optional[Image.Image] = None
+        
         self._init_ui()
-    
+        self._connect_signals()
+
     def _init_ui(self):
+        """Initialize the user interface"""
         layout = QHBoxLayout()
+        layout.setSpacing(20)
         
-        # Left side - Image
+        # Left panel - Image and file operations
         left_panel = QVBoxLayout()
-        self.image_frame = ImageFrame()
-        self.image_frame.image_changed.connect(self._handle_image_changed)
+        
+        # Image section
+        self.image_frame = ImageFrame(
+            self.ui_manager,
+            self.settings_manager
+        )
+        self.image_frame.setMinimumSize(300, 400)
+        self.image_frame.setMaximumSize(300, 400)
         left_panel.addWidget(self.image_frame)
+        
+        # File operation buttons
+        self.load_btn = QPushButton("Load Character")
+        self.load_btn.setFixedWidth(300)
+        self.load_btn.clicked.connect(self._handle_load_character)
+        left_panel.addWidget(self.load_btn)
+        
+        # Save buttons container
+        save_buttons = QHBoxLayout()
+        
+        self.save_png_btn = QPushButton("Save as PNG")
+        self.save_png_btn.setFixedWidth(145)
+        self.save_png_btn.clicked.connect(
+            lambda: self._handle_save_character("png")
+        )
+        save_buttons.addWidget(self.save_png_btn)
+        
+        self.save_json_btn = QPushButton("Save as JSON")
+        self.save_json_btn.setFixedWidth(145)
+        self.save_json_btn.clicked.connect(
+            lambda: self._handle_save_character("json")
+        )
+        save_buttons.addWidget(self.save_json_btn)
+        
+        left_panel.addLayout(save_buttons)
         left_panel.addStretch()
+        
         layout.addLayout(left_panel)
+
+        # Right panel - Fields
+        right_panel = QScrollArea()
+        right_panel.setWidgetResizable(True)
+        right_panel.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         
-        # Right side - Fields
-        right_panel = QVBoxLayout()
+        form_container = QWidget()
+        form_layout = QVBoxLayout(form_container)
+        form_layout.setSpacing(20)
         
-        # Create scroll area
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        
-        # Container for fields
-        container = QWidget()
-        form_layout = QVBoxLayout(container)
-        
-        # Main Info group
-        main_group = QGroupBox("Main Info")
+        # Main Info Group
+        main_group = QGroupBox("Main Information")
         main_layout = QFormLayout()
         
-        # Top row (Name, Version, Creator)
+        # Top row with name, version, creator
         top_row = QHBoxLayout()
         
-        self.fields['name'] = EditorField("Name", multiline=False)
+        self.fields['name'] = EditableField(
+            "Name", multiline=False,
+            ui_manager=self.ui_manager,
+            settings_manager=self.settings_manager
+        )
         top_row.addWidget(self.fields['name'])
         
-        self.fields['version'] = EditorField("Version", multiline=False)
-        self.fields['version'].set_text("1.0.0")
+        # Version field initialization
+        self.fields['version'] = EditableField(
+            "Version", multiline=False,
+            ui_manager=self.ui_manager,
+            settings_manager=self.settings_manager
+        )
+        self.fields['version'].set_value("1.0.0")  
         top_row.addWidget(self.fields['version'])
         
-        self.fields['creator'] = EditorField("Creator", multiline=False)
-        self.fields['creator'].set_text(self.config.user.creator_name)
+        # Creator field initialization
+        self.fields['creator'] = EditableField(
+            "Creator", multiline=False,
+            ui_manager=self.ui_manager,
+            settings_manager=self.settings_manager
+        )
+        self.fields['creator'].set_value(  
+            self.settings_manager.get("user.creator_name", "Anonymous")
+        )
         top_row.addWidget(self.fields['creator'])
+
         
         main_layout.addRow("", top_row)
         
-        # Generated Fields
+        # Add core fields
         for field in FieldName:
-            if field != FieldName.NAME:  # Skip name as it's already handled
-                self.fields[field.value] = EditorField(field.value.replace('_', ' ').title())
+            if field != FieldName.NAME:  # Already handled in top row
+                self.fields[field.value] = EditableField(
+                    field.value.replace('_', ' ').title(),
+                    ui_manager=self.ui_manager,
+                    settings_manager=self.settings_manager
+                )
                 main_layout.addRow("", self.fields[field.value])
         
         main_group.setLayout(main_layout)
         form_layout.addWidget(main_group)
         
-        # First Message with alternate greetings
+        # Messages Group
         msg_group = QGroupBox("Messages")
         msg_layout = QVBoxLayout()
         
-        if 'first_mes' in self.fields:
-            msg_layout.addWidget(self.fields['first_mes'])
-        
-        self.alt_greetings = AlternateGreetingsWidget()
+        # Initialize alternate greetings widget
+        self.alt_greetings = AlternateGreetingsWidget(
+            self.ui_manager,
+            self.settings_manager
+        )
         msg_layout.addWidget(self.alt_greetings)
         
         msg_group.setLayout(msg_layout)
         form_layout.addWidget(msg_group)
         
-        # Additional fields (metadata)
+        # Additional Settings Group
         additional_group = QGroupBox("Additional Settings")
         additional_layout = QVBoxLayout()
         
-        # Add metadata-only fields
-        metadata_fields = [
-            field for field in CardField 
-            if field.value not in [f.value for f in FieldName]
-        ]
-        
-        for field in metadata_fields:
-            self.fields[field.value] = EditorField(
-                field.value.replace('_', ' ').title(),
-                multiline=True  # Most metadata fields benefit from multiline
-            )
-            additional_layout.addWidget(self.fields[field.value])
+        # Add metadata fields
+        for field in CardField:
+            if field.value not in [f.value for f in FieldName]:
+                self.fields[field.value] = EditableField(
+                    field.value.replace('_', ' ').title(),
+                    ui_manager=self.ui_manager,
+                    settings_manager=self.settings_manager
+                )
+                additional_layout.addWidget(self.fields[field.value])
         
         # Tags field
-        self.fields['tags'] = EditorField("Tags", multiline=False)
+        self.fields['tags'] = EditableField(
+            "Tags", multiline=False,
+            ui_manager=self.ui_manager,
+            settings_manager=self.settings_manager
+        )
         additional_layout.addWidget(self.fields['tags'])
         
         additional_group.setLayout(additional_layout)
         form_layout.addWidget(additional_group)
         
-        # Set container as scroll area widget
-        scroll.setWidget(container)
-        right_panel.addWidget(scroll)
+        right_panel.setWidget(form_container)
+        layout.addWidget(right_panel, stretch=1)
         
-        layout.addLayout(right_panel, stretch=1)
         self.setLayout(layout)
-        
-        # Signal connections at the bottom:
-        for field_name, widget in self.fields.items():
-            if isinstance(widget.editor, QTextEdit):
-                widget.editor.textChanged.connect(
-                    lambda name=field_name: self._handle_editor_changed(name)
-                )
-            else:
-                # Use textChanged for QLineEdit too
-                widget.editor.textChanged.connect(
-                    lambda text, name=field_name: self._handle_editor_changed(name)
-                )
-
-    def _handle_editor_changed(self, field_name: str):
-        """Handle changes in editor fields"""
-        if self.is_updating or not self.current_character:
-            return
-                
+    
+    def _handle_character_loaded(self, character: CharacterData):
+        """Handle loaded character"""
+        print(f"EditorTab: Loading character {character.name}")
         self.is_updating = True
         try:
-            value = self.fields[field_name].get_text()
+            # Handle fields
+            for field in FieldName:
+                if field.value in self.fields:
+                    self.fields[field.value].set_value(
+                        character.fields.get(field, '')
+                    )
             
-            # Handle different field types
-            if field_name in ['version', 'creator']:
-                setattr(self.current_character, field_name, value)
-                print(f"EditorTab: Emitting update for field {field_name}")
-                self.character_updated.emit(self.current_character, field_name)
-            elif field_name == 'name':
-                setattr(self.current_character, field_name, value)
-                self.current_character.fields[FieldName(field_name)] = value
-                print(f"EditorTab: Emitting update for field {field_name}")
-                self.character_updated.emit(self.current_character, field_name)
-            elif field_name == 'tags':
-                self.current_character.tags = [
-                    tag.strip() for tag in value.split(',') if tag.strip()
-                ]
-                print(f"EditorTab: Emitting update for field {field_name}")
-                self.character_updated.emit(self.current_character, field_name)
+            # Handle metadata
+            if 'creator' in self.fields:
+                self.fields['creator'].set_value(character.creator)
+            if 'version' in self.fields:
+                self.fields['version'].set_value(character.version)
+            if 'tags' in self.fields:
+                self.fields['tags'].set_value(','.join(character.tags))
+            
+            # Handle image
+            if character.image_data:
+                self.image_frame.set_image(character.image_data)
             else:
-                # Try as FieldName first, then CardField
-                try:
-                    self.current_character.fields[FieldName(field_name)] = value
-                    print(f"EditorTab: Emitting update for field {field_name}")
-                    self.character_updated.emit(self.current_character, field_name)
-                except ValueError:
-                    try:
-                        self.current_character.fields[CardField(field_name)] = value
-                        self.character_updated.emit(self.current_character, field_name)
-                    except ValueError:
-                        pass
+                self.image_frame._init_placeholder()
+            
+            # Handle alternate greetings
+            if character.alternate_greetings:
+                self.alt_greetings.set_greetings(character.alternate_greetings)
+            else:
+                self.alt_greetings.set_greetings([])
+                    
         finally:
             self.is_updating = False
 
-    
+    def _handle_mode_change(self, field: FieldName, mode: UIMode):
+        """Handle field mode changes"""
+        if field.value in self.fields:
+            widget = self.fields[field.value]
+            
+            # Update widget state based on mode
+            if mode == UIMode.EXPANDED:
+                # Save current state for restoration
+                self.ui_manager.save_field_state(
+                    field,
+                    widget.verticalScrollBar().value() if hasattr(widget, 'verticalScrollBar') else 0,
+                    widget.height()
+                )
+                widget.setMaximumHeight(16777215)  # Qt's QWIDGETSIZE_MAX
+            else:
+                # Restore previous state
+                state = self.ui_manager.get_field_state(field)
+                if state.original_height:
+                    widget.setMaximumHeight(state.original_height)
+                else:
+                    widget.setMaximumHeight(200)  # Default compact height
+                
+                if hasattr(widget, 'verticalScrollBar'):
+                    widget.verticalScrollBar().setValue(state.scroll_position)
+            
+            # Update edit state
+            if hasattr(widget, 'editor'):
+                widget.editor.setReadOnly(mode == UIMode.READONLY)
+                
+    def _handle_character_updated(self, character: CharacterData, field: str):
+        """Handle character updates"""
+        if self.is_updating:
+            return
+            
+        self.is_updating = True
+        try:
+            if field == "image":
+                if character.image_data:
+                    self.image_frame.set_image(character.image_data)
+            elif field == "all":
+                self._handle_character_loaded(character)
+            else:
+                if field in self.fields:
+                    if field in ['creator', 'version']:
+                        self.fields[field].set_value(
+                            getattr(character, field, '')
+                        )
+                    elif field == 'tags':
+                        self.fields['tags'].set_value(','.join(character.tags))
+                    else:
+                        try:
+                            field_enum = FieldName(field)
+                            self.fields[field].set_value(
+                                character.fields.get(field_enum, '')
+                            )
+                        except ValueError:
+                            pass
+        finally:
+            self.is_updating = False
+
+    def _handle_dropped_file(self, file_path: str):
+        """Handle dropped files"""
+        if file_path.lower().endswith(('.json', '.png')):
+            try:
+                character = self.character_manager.load_character(file_path)
+                self._handle_character_loaded(character)
+                self.character_loaded.emit(character)
+                self.ui_manager.show_status_message(
+                    f"Loaded character from dropped file: {file_path}",
+                    StatusLevel.SUCCESS
+                )
+            except Exception as e:
+                self.ui_manager.show_status_message(
+                    f"Error loading dropped file: {str(e)}",
+                    StatusLevel.ERROR
+                )
+                QMessageBox.critical(
+                    self,
+                    "Load Error",
+                    f"Error loading dropped file: {str(e)}"
+                )
+
+    def _connect_signals(self):
+        """Connect all signals"""
+        # Connect character manager signals
+        self.character_manager.character_loaded.connect(self._handle_character_loaded)
+        self.character_manager.character_updated.connect(self._handle_character_updated)
+        
+        # Connect UI manager signals
+        self.ui_manager.field_mode_changed.connect(self._handle_mode_change)
+        
+        # Connect image frame signals
+        self.image_frame.image_changed.connect(self._handle_image_changed)
+        self.image_frame.file_dropped.connect(self._handle_dropped_file)
+        
+        # Connect field signals
+        for field_name, field_widget in self.fields.items():
+            field_widget.value_changed.connect(
+                lambda value, name=field_name: self._handle_field_changed(name, value)
+            )
+
+    def _handle_load_character(self):
+        """Handle character load request"""
+        file_name, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Character",
+            "",
+            "Character Files (*.json *.png)"
+        )
+        
+        if not file_name:
+            return
+            
+        try:
+            character = self.character_manager.load_character(file_name)
+            self.set_initial_character(character)
+            self.character_loaded.emit(character)
+            self.status_update.emit(
+                f"Loaded character: {character.name}",
+                StatusLevel.SUCCESS
+            )
+            
+        except Exception as e:
+            self.status_update.emit(
+                f"Error loading character: {str(e)}",
+                StatusLevel.ERROR
+            )
+            QMessageBox.critical(
+                self,
+                "Load Error",
+                f"Error loading character: {str(e)}"
+            )
+
+    def _handle_save_character(self, format_type: str):
+        """Handle character save request"""
+        if not self.current_character:
+            self.status_update.emit(
+                "No character to save",
+                StatusLevel.WARNING
+            )
+            return
+        
+        try:
+            # Update character data from fields
+            self._update_character_data()
+            
+            # Get save location
+            default_name = f"{self.current_character.name}.{format_type}"
+            file_name, _ = QFileDialog.getSaveFileName(
+                self,
+                "Save Character",
+                default_name,
+                f"Character Files (*.{format_type})"
+            )
+            
+            if not file_name:
+                return
+            
+            # Ensure correct extension
+            if not file_name.lower().endswith(f".{format_type}"):
+                file_name += f".{format_type}"
+            
+            # Save character
+            save_format = CardFormat.PNG if format_type == "png" else CardFormat.JSON
+            saved_path = self.character_manager.save_character(
+                file_name,
+                save_format
+            )
+            
+            self.status_update.emit(
+                f"Saved character to: {saved_path}",
+                StatusLevel.SUCCESS
+            )
+            
+        except Exception as e:
+            self.status_update.emit(
+                f"Error saving character: {str(e)}",
+                StatusLevel.ERROR
+            )
+            QMessageBox.critical(
+                self,
+                "Save Error",
+                f"Error saving character: {str(e)}"
+            )
+
     def _handle_image_changed(self, image: Image.Image):
-        """Handle image upload/change"""
+        """Handle image changes"""
+        self.current_image = image
         if self.current_character:
             self.current_character.image_data = image
-            self.character_updated.emit(self.current_character)
-    
+            self.character_updated.emit(self.current_character, "image")
+            self.status_update.emit(
+                "Character image updated",
+                StatusLevel.SUCCESS
+            )
+
+    def _handle_field_changed(self, field_name: str, value: str):
+        """Handle field value changes"""
+        if not self.is_updating and self.current_character:
+            self.is_updating = True
+            try:
+                if field_name in ['creator', 'version']:
+                    setattr(self.current_character, field_name, value)
+                elif field_name == 'tags':
+                    self.current_character.tags = [
+                        tag.strip() for tag in value.split(',')
+                        if tag.strip()
+                    ]
+                else:
+                    try:
+                        field = FieldName(field_name)
+                        self.current_character.fields[field] = value
+                    except ValueError:
+                        try:
+                            field = CardField(field_name)
+                            self.current_character.fields[field] = value
+                        except ValueError:
+                            pass
+                
+                # Emit update signal for synchronization
+                self.character_updated.emit(self.current_character, field_name)
+                    
+            finally:
+                self.is_updating = False
+
+    def _update_character_data(self):
+        """Update character data from current fields"""
+        if not self.current_character:
+            return
+        
+        # Update fields
+        for field in FieldName:
+            if field.value in self.fields:
+                self.current_character.fields[field] = self.fields[field.value].get_value()
+        
+        # Update metadata fields
+        for field in CardField:
+            if field.value not in [f.value for f in FieldName]:
+                if field.value in self.fields:
+                    self.current_character.fields[field] = self.fields[field.value].get_value()
+        
+        # Update character properties
+        if 'creator' in self.fields:
+            self.current_character.creator = self.fields['creator'].get_value()
+        if 'version' in self.fields:
+            self.current_character.version = self.fields['version'].get_value()
+        if 'tags' in self.fields:
+            self.current_character.tags = [
+                tag.strip() for tag in self.fields['tags'].get_value().split(',')
+                if tag.strip()
+            ]
+
     def set_initial_character(self, character: CharacterData):
-        """Set initial character data without emitting updates"""
+        """Set initial character data"""
         print(f"EditorTab: Setting initial character {character.name}")
         self.is_updating = True
         try:
-            self.current_character = character
-            
-            # Update all fields
+            # Handle fields
             for field in FieldName:
                 if field.value in self.fields:
-                    self.fields[field.value].set_text(character.fields.get(field, ''))
+                    self.fields[field.value].set_value(
+                        character.fields.get(field, '')
+                    )
             
-            # Update metadata fields
-            for field in CardField:
-                if field.value not in [f.value for f in FieldName]:
-                    if field.value in self.fields:
-                        self.fields[field.value].set_text(character.fields.get(field, ''))
+            # Handle metadata
+            if 'creator' in self.fields:
+                self.fields['creator'].set_value(character.creator)
+            if 'version' in self.fields:
+                self.fields['version'].set_value(character.version)
+            if 'tags' in self.fields:
+                self.fields['tags'].set_value(','.join(character.tags))
             
-            # Update alternate greetings
-            if hasattr(self, 'alt_greetings'):
-                self.alt_greetings.set_greetings(character.alternate_greetings)
-                    
-            # Update image
+            # Handle image
             if character.image_data:
-                qimage = ImageQt(character.image_data)
-                self.image_frame.setPixmap(QPixmap.fromImage(qimage))
+                self.image_frame.set_image(character.image_data)
             else:
                 self.image_frame._init_placeholder()
+            
+            # Handle alternate greetings
+            if hasattr(self, 'alt_greetings'):  # Verify the attribute name
+                print(f"Setting {len(character.alternate_greetings)} greetings in Editor Tab")  # Debug
+                if character.alternate_greetings:
+                    self.alt_greetings.set_greetings(character.alternate_greetings)
+                else:
+                    self.alt_greetings.set_greetings([])
+                    
         finally:
             self.is_updating = False
 
@@ -336,16 +535,57 @@ class EditorTab(QWidget):
         try:
             self.current_character = character
             
-            # If specific field updated and not a full update
-            if updated_field and updated_field != "all":
-                if updated_field in self.fields:
-                    self.fields[updated_field].set_text(
-                        character.fields.get(FieldName(updated_field), '')
-                    )
+            if updated_field == "image":
+                if character.image_data:
+                    qimage = ImageQt(character.image_data)
+                    self.image_frame.setPixmap(QPixmap.fromImage(qimage))
+                    self.current_image = character.image_data
+            elif updated_field == "all":
+                self.set_initial_character(character)
             else:
-                # Full update
-                for field in FieldName:
-                    if field.value in self.fields:
-                        self.fields[field.value].set_text(character.fields.get(field, ''))
+                if updated_field in self.fields:
+                    if updated_field in ['creator', 'version']:
+                        self.fields[updated_field].set_value(
+                            getattr(character, updated_field, '')
+                        )
+                    elif updated_field == 'tags':
+                        self.fields['tags'].set_value(','.join(character.tags))
+                    else:
+                        try:
+                            field = FieldName(updated_field)
+                            self.fields[updated_field].set_value(
+                                character.fields.get(field, '')
+                            )
+                        except ValueError:
+                            try:
+                                field = CardField(updated_field)
+                                self.fields[updated_field].set_value(
+                                    character.fields.get(field, '')
+                                )
+                            except ValueError:
+                                pass
+                
         finally:
             self.is_updating = False
+
+    def closeEvent(self, event):
+        """Handle tab closing"""
+        if self.character_manager.is_modified:
+            reply = QMessageBox.question(
+                self,
+                "Unsaved Changes",
+                "Do you want to save your changes before closing?",
+                QMessageBox.StandardButton.Yes | 
+                QMessageBox.StandardButton.No |
+                QMessageBox.StandardButton.Cancel
+            )
+            
+            if reply == QMessageBox.StandardButton.Cancel:
+                event.ignore()
+                return
+            elif reply == QMessageBox.StandardButton.Yes:
+                self._handle_save_character(
+                    self.settings_manager.get("default_save_format", "json")
+                )
+        
+        event.accept()
