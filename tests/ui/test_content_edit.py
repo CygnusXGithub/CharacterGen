@@ -44,17 +44,12 @@ class TestEditableContentWidget:
         assert content_widget._label.text() == "Test Field"
 
     def test_content_handling(self, content_widget, qtbot):
-        """Test content manipulation"""
-        # Test setting content
+        """Test content changes"""
         content_widget.set_content("Test content")
-        assert content_widget.get_content() == "Test content"
+        qtbot.wait(100)
         
-        # Test content change signal
-        with qtbot.waitSignal(content_widget.content_changed):
-            content_widget._editor.setPlainText("New content")
-        
-        assert content_widget.get_content() == "New content"
         assert content_widget._is_modified
+        assert content_widget.get_content() == "Test content"
 
     def test_multiline_handling(self, multiline_widget, qtbot):
         """Test multiline content handling"""

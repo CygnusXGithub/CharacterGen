@@ -4,6 +4,7 @@ from PyQt6.QtCore import pyqtSignal, Qt
 
 from core.state import UIStateManager
 from core.errors import ErrorHandler, ErrorCategory, ErrorLevel
+from .validation import ValidationDisplay, ValidationSeverity
 
 class BaseWidget(QWidget):
     """Base class for all application widgets"""
@@ -47,6 +48,32 @@ class BaseWidget(QWidget):
     def handle_error(self, error_type: str, message: str):
         """Handle widget errors"""
         self.error_occurred.emit(error_type, message)
+
+    def set_validation_state(self, is_valid: bool, message: str = ""):
+        """Set validation state"""
+        self._is_valid = is_valid
+        self._validation_message = message
+        self.validation_changed.emit(is_valid, message)
+        
+        self._update_validation_display(is_valid, message)
+
+    def _update_validation_display(self, is_valid: bool, message: str):
+        """Update validation display state"""
+        if message:
+            severity = ValidationSeverity.ERROR if not is_valid else ValidationSeverity.INFO
+            self._validation_display.show_message(message, severity)
+            self._validation_display.show()
+            self._validation_display.raise_()
+        else:
+            self._validation_display.clear()
+            self._validation_display.hide()
+
+        # Update content frame styling
+        if hasattr(self, '_content_frame'):
+            if not is_valid:
+                self._content_frame.setStyleSheet("border: 1px solid #ff0000;")
+            else:
+                self._content_frame.setStyleSheet("")
 
 class ContentEditWidget(BaseWidget):
     """Base class for content-editable widgets"""
@@ -99,27 +126,6 @@ class ContentEditWidget(BaseWidget):
     def is_valid(self) -> bool:
         """Check if content is valid"""
         return self._is_valid
-
-    def set_validation_state(self, is_valid: bool, message: str = ""):
-        """Set validation state"""
-        self._is_valid = is_valid
-        self._validation_message = message
-        self.validation_changed.emit(is_valid, message)
-        
-        # Update visual state
-        self._update_validation_display()
-
-    def _update_validation_display(self):
-        """Update validation visual state"""
-        if not self._is_valid:
-            self._content_frame.setStyleSheet("""
-                QFrame {
-                    border: 1px solid #ff0000;
-                    background-color: #fff0f0;
-                }
-            """)
-        else:
-            self._content_frame.setStyleSheet("")
 
     def handle_focus_in(self):
         """Handle widget focus in"""

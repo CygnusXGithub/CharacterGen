@@ -128,6 +128,7 @@ class EditableContentWidget(ContentEditWidget):
         else:
             self._editor.setPlainText(content)
         self._last_content = content
+        self.handle_content_change()
 
     def clear_content(self):
         """Clear content"""
@@ -143,21 +144,6 @@ class EditableContentWidget(ContentEditWidget):
     def set_validation_state(self, is_valid: bool, message: str = ""):
         """Set validation state with message"""
         super().set_validation_state(is_valid, message)
-        
-        if message:
-            severity = ValidationSeverity.ERROR if not is_valid else ValidationSeverity.INFO
-            # Force layout update before showing validation
-            self.layout().activate()
-            self._validation_display.show_message(message, severity)
-            
-            # Ensure validation display is properly shown
-            self._validation_display.show()
-            self._validation_display.raise_()
-            
-            print(f"EditableContentWidget.set_validation_state: display visible={self._validation_display.isVisible()}")
-        else:
-            self._validation_display.clear()
-            self._validation_display.hide()
 
     def _handle_text_changed(self):
         """Handle text changes in editor"""

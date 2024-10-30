@@ -19,22 +19,26 @@ class FileService:
         self.error_handler = error_handler
         self.logger = logging.getLogger(__name__)
         
-        # Ensure directories exist
-        self._ensure_directories()
+        # Initial directory setup
+        self.ensure_directory(self.config.save_dir)
+        self.ensure_directory(self.config.backup_dir)
+        self.ensure_directory(self.config.temp_dir)
 
-    def _ensure_directories(self):
-        """Create necessary directories if they don't exist"""
+    def ensure_directory(self, path: Path):
+        """Ensure directory exists"""
         try:
-            self.config.save_dir.mkdir(parents=True, exist_ok=True)
-            self.config.backup_dir.mkdir(parents=True, exist_ok=True)
-            self.config.temp_dir.mkdir(parents=True, exist_ok=True)
+            path.mkdir(parents=True, exist_ok=True)
         except Exception as e:
             self.error_handler.handle_error(
                 error=e,
                 category=ErrorCategory.FILE,
                 level=ErrorLevel.ERROR,
-                context={'operation': 'create_directories'}
+                context={'operation': 'ensure_directory', 'path': str(path)}
             )
+
+    def get_save_directory(self) -> Path:
+        """Get the save directory path"""
+        return self.config.save_dir
 
     async def save_character(self, 
                            character: CharacterData, 

@@ -253,18 +253,7 @@ class StandardField(EditableContentWidget):
     def set_validation_state(self, is_valid: bool, message: str = ""):
         """Set validation state with message"""
         super().set_validation_state(is_valid, message)
-        self._is_valid = is_valid  # Ensure internal state is updated
-        
-        if message:
-            severity = ValidationSeverity.ERROR if not is_valid else ValidationSeverity.INFO
-            self._validation_display.show_message(message, severity)
-            self._validation_display.show()
-        else:
-            self._validation_display.clear()
-            self._validation_display.hide()
 
     def is_valid(self) -> bool:
         """Check if field is valid"""
-        if self.required and self.is_empty():
-            return False
         return super().is_valid()

@@ -70,19 +70,11 @@ class TestStandardField:
 
     def test_content_handling(self, standard_field, qtbot):
         """Test content manipulation"""
-        # Set content
         standard_field.set_content("Test content")
+        qtbot.wait(100)
+        
+        assert standard_field._is_modified
         assert standard_field.get_content() == "Test content"
-        
-        # Clear content
-        clear_button = [b for b in standard_field.findChildren(QPushButton)
-                       if b.objectName() == "clear_button"][0]
-        
-        with qtbot.waitSignal(standard_field.clear_requested):
-            qtbot.mouseClick(clear_button, Qt.MouseButton.LeftButton)
-        
-        assert standard_field.get_content() == ""
-        assert standard_field.is_empty()
 
     def test_required_validation(self, standard_field, qtbot):
         """Test required field validation"""

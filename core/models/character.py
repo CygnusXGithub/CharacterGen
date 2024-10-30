@@ -6,11 +6,53 @@ import copy
 
 @dataclass
 class CharacterGenMetadata:
-    """Our application-specific metadata"""
+    """Metadata specific to our application"""
     generation_history: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
     last_validated: Optional[datetime] = None
     validation_state: Dict[str, Any] = field(default_factory=dict)
     custom_settings: Dict[str, Any] = field(default_factory=dict)
+    version: str = "1.0"
+    created_with: str = "CharacterGen"
+    last_modified_with: str = "CharacterGen"
+    last_modified: Optional[str] = None
+
+    def update(self, data: Dict[str, Any]):
+        """Update metadata fields"""
+        for key, value in data.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+            else:
+                self.custom_settings[key] = value
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert metadata to dictionary"""
+        return {
+            "generation_history": self.generation_history,
+            "last_validated": self.last_validated.isoformat() if self.last_validated else None,
+            "validation_state": self.validation_state,
+            "custom_settings": self.custom_settings,
+            "version": self.version,
+            "created_with": self.created_with,
+            "last_modified_with": self.last_modified_with,
+            "last_modified": self.last_modified or datetime.now().isoformat()
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'CharacterGenMetadata':
+        """Create metadata from dictionary"""
+        if data is None:
+            return cls()
+            
+        return cls(
+            generation_history=data.get('generation_history', {}),
+            last_validated=datetime.fromisoformat(data['last_validated']) if data.get('last_validated') else None,
+            validation_state=data.get('validation_state', {}),
+            custom_settings=data.get('custom_settings', {}),
+            version=data.get('version', "1.0"),
+            created_with=data.get('created_with', "CharacterGen"),
+            last_modified_with=data.get('last_modified_with', "CharacterGen"),
+            last_modified=data.get('last_modified')
+        )
 
 @dataclass
 class CharacterData:
@@ -35,10 +77,13 @@ class CharacterData:
     id: UUID = field(default_factory=uuid4)
     created_at: datetime = field(default_factory=datetime.now)
     modified_at: datetime = field(default_factory=datetime.now)
-
+    
     # Private fields for extension handling
     _extensions: Dict[str, Any] = field(default_factory=dict, repr=False)
-    _charactergen_metadata: Optional[CharacterGenMetadata] = field(default=None, repr=False)
+    _charactergen_metadata: CharacterGenMetadata = field(
+        default_factory=CharacterGenMetadata,
+        repr=False
+    )
     
     def copy(self) -> 'CharacterData':
         """Create a deep copy of the character data"""
@@ -58,29 +103,29 @@ class CharacterData:
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to template format"""
+        char_data = {
+            "name": self.name,
+            "description": self.description,
+            "personality": self.personality,
+            "first_mes": self.first_mes,
+            "avatar": self.avatar,
+            "mes_example": self.mes_example,
+            "scenario": self.scenario,
+            "creator_notes": self.creator_notes,
+            "system_prompt": self.system_prompt,
+            "post_history_instructions": self.post_history_instructions,
+            "alternate_greetings": self.alternate_greetings,
+            "tags": self.tags,
+            "creator": self.creator,
+            "character_version": self.character_version,
+            "extensions": {
+                **self._extensions,
+                "charactergen": self._charactergen_metadata.to_dict()
+            }
+        }
+
         return {
-            "data": {
-                "name": self.name,
-                "description": self.description,
-                "personality": self.personality,
-                "first_mes": self.first_mes,
-                "avatar": self.avatar,
-                "mes_example": self.mes_example,
-                "scenario": self.scenario,
-                "creator_notes": self.creator_notes,
-                "system_prompt": self.system_prompt,
-                "post_history_instructions": self.post_history_instructions,
-                "alternate_greetings": self.alternate_greetings,
-                "tags": self.tags,
-                "creator": self.creator,
-                "character_version": self.character_version,
-                "extensions": {
-                    # Preserve any existing extensions when reading files
-                    **(self._extensions or {}),
-                    # Add our own metadata
-                    "charactergen": self._charactergen_metadata.__dict__ if self._charactergen_metadata else {}
-                }
-            },
+            "data": char_data,
             "spec": "chara_card_v2",
             "spec_version": "2.0"
         }
@@ -88,31 +133,38 @@ class CharacterData:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'CharacterData':
         """Create from template format"""
-        # Handle both full template and partial data
-        if "data" in data:
-            char_data = data["data"]
-        else:
-            char_data = data
-            
-        # Extract non-extension fields that match our dataclass
-        fields = {k: v for k, v in char_data.items() 
-                if k != 'extensions' and hasattr(cls, k)}
+        # Handle both full template and data-only format
+        char_data = data.get('data', data)
+        
+        # Extract base fields
+        base_fields = {
+            field: char_data.get(field, "") 
+            for field in [
+                "name", "description", "personality", "first_mes",
+                "avatar", "mes_example", "scenario", "creator_notes",
+                "system_prompt", "post_history_instructions",
+                "creator", "character_version"
+            ]
+        }
+        
+        # Handle list fields
+        base_fields["alternate_greetings"] = char_data.get("alternate_greetings", [])
+        base_fields["tags"] = char_data.get("tags", [])
         
         # Create instance
-        instance = cls(**fields)
+        instance = cls(**base_fields)
         
-        # Handle extensions if they exist
-        if 'extensions' in char_data and char_data['extensions'] is not None:
-            extensions = char_data['extensions']
-            # Store non-charactergen extensions
-            instance._extensions = {k: v for k, v in extensions.items() 
-                                if k != 'charactergen'}
-            
-            # Handle charactergen metadata
-            if 'charactergen' in extensions:
-                instance._charactergen_metadata = CharacterGenMetadata(
-                    **extensions['charactergen']
-                )
+        # Handle extensions
+        extensions = char_data.get("extensions", {}) or {}  # Handle None case
+        instance._extensions = {
+            k: v for k, v in extensions.items() 
+            if k != "charactergen"
+        }
+        
+        # Handle CharacterGen metadata
+        charactergen_data = extensions.get("charactergen", {})
+        if charactergen_data is not None:
+            instance._charactergen_metadata = CharacterGenMetadata.from_dict(charactergen_data)
         
         return instance
     
