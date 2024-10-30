@@ -8,7 +8,48 @@ from config.app_config import (
     AppConfig, FileConfig, ApiConfig, 
     UIConfig, GenerationConfig, DebugConfig
 )
+from ui.widgets.base import BaseWidget
 from core.services import ValidationService, FileService
+from ui.widgets.content_edit import EditableContentWidget
+
+@pytest.fixture
+def basic_content_widget(qtbot, ui_manager):
+    """Create a basic content widget for testing base functionality"""
+    widget = EditableContentWidget(ui_manager, "test_field")
+    qtbot.addWidget(widget)
+    return widget
+
+@pytest.fixture
+def base_widget(qtbot, ui_manager):
+    """Create base widget for testing"""
+    widget = BaseWidget(ui_manager)
+    qtbot.addWidget(widget)
+    return widget
+
+@pytest.fixture
+def content_widget(qtbot, ui_manager):
+    """Create content widget for testing"""
+    widget = EditableContentWidget(
+        ui_manager,
+        field_name="test_field",
+        multiline=False,
+        placeholder_text="Enter text..."
+    )
+    qtbot.addWidget(widget)
+    return widget
+
+@pytest.fixture
+def multiline_widget(qtbot, ui_manager):
+    """Create multiline content widget"""
+    widget = EditableContentWidget(
+        ui_manager,
+        field_name="test_field",
+        multiline=True,
+        placeholder_text="Enter multiple lines..."
+    )
+    qtbot.addWidget(widget)
+    return widget
+
 
 @pytest.fixture(scope="session")
 def qapp():

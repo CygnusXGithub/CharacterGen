@@ -8,30 +8,22 @@ from ui.widgets.base import BaseWidget, ContentEditWidget, ExpandableWidget
 from core.state.ui import UIStateManager
 from core.errors import ErrorHandler
 
-class TestContentWidget(ContentEditWidget):
-    """Concrete implementation for testing"""
-    def __init__(self, ui_manager, field_name=None, parent=None):
-        super().__init__(ui_manager, field_name, parent)
-        self._content = ""
+class TestBaseWidgetFunctionality:
+    """Test basic widget functionality"""
+    
+    def test_state_changes(self, base_widget, qtbot):
+        """Test state change handling"""
+        with qtbot.waitSignal(base_widget.state_changed) as blocker:
+            base_widget.update_state("test", "value")
+        
+        assert blocker.args == ["test", "value"]
 
-    def _setup_content_ui(self):
-        """Setup test content UI"""
-        pass  # No UI needed for testing
-
-    def get_content(self) -> str:
-        """Get current content"""
-        return self._content
-
-    def set_content(self, content: str):
-        """Set content"""
-        self._content = content
-
-@pytest.fixture
-def content_widget(qtbot, ui_manager):
-    """Provide test content widget"""
-    widget = TestContentWidget(ui_manager, "test_field")
-    qtbot.addWidget(widget)
-    return widget
+    def test_error_handling(self, base_widget, qtbot):
+        """Test error handling"""
+        with qtbot.waitSignal(base_widget.error_occurred) as blocker:
+            base_widget.handle_error("test_error", "Error message")
+        
+        assert blocker.args == ["test_error", "Error message"]
 
 class TestContentEditWidget:
     """Test content edit widget functionality"""
