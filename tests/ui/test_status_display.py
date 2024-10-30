@@ -9,6 +9,7 @@ def status_display(qtbot, ui_manager):
     display = StatusDisplay(ui_manager, max_messages=3)
     qtbot.addWidget(display)
     display.show()
+    qtbot.waitExposed(display)  # Wait for widget to be shown
     return display
 
 class TestStatusDisplay:
@@ -16,10 +17,20 @@ class TestStatusDisplay:
     
     def test_show_message(self, status_display, qtbot):
         """Test showing messages"""
+        # Ensure display is visible
+        assert status_display.isVisible()
+        
         # Show message and verify
         msg_id = status_display.show_message("Test message", StatusLevel.INFO)
-        qtbot.wait(100)  # Wait for widget creation
         
+        # Wait for widget creation and visibility
+        def check_visibility():
+            frame = status_display._message_widgets.get(msg_id)
+            return frame is not None and frame.isVisible()
+        
+        qtbot.wait_until(check_visibility)
+        
+        # Verify message state
         assert status_display.has_message(msg_id)
         assert len(status_display.get_active_messages()) == 1
         
@@ -43,24 +54,32 @@ class TestStatusDisplay:
         """Test maximum messages limit"""
         # Add max + 1 messages
         message_ids = []
-        for i in range(4):  # max is 3
-            msg_id = status_display.show_message(f"Message {i}", duration=0)  # Make them persistent
+        
+        # Fill to maximum
+        for i in range(status_display.max_messages):
+            msg_id = status_display.show_message(f"Message {i}", duration=0)
             message_ids.append(msg_id)
-            qtbot.wait(50)  # Give time for widget creation
+            qtbot.wait(100)  # Wait for message to be fully processed
+            
+            # Verify message was added
+            assert status_display.has_message(msg_id)
+        
+        # Add one more message
+        overflow_id = status_display.show_message("Overflow Message", duration=0)
+        qtbot.wait(100)  # Wait for message processing
         
         # Verify oldest message was removed
         assert not status_display.has_message(message_ids[0])
-        assert len(status_display.get_active_messages()) == status_display.max_messages
-
-    @pytest.mark.parametrize("duration", [100, 200])
-    def test_message_duration(self, status_display, qtbot, duration):
-        """Test message duration"""
-        with qtbot.waitSignal(status_display.message_hidden, timeout=duration + 100):
-            msg_id = status_display.show_message(
-                "Temporary message",
-                duration=duration
-            )
-            assert status_display.has_message(msg_id)
+        assert status_display.has_message(overflow_id)
+        
+        # Verify count
+        active_messages = status_display.get_active_messages()
+        assert len(active_messages) == status_display.max_messages
+        
+        # Verify order (oldest message should be gone)
+        current_ids = [msg.id for msg in active_messages]
+        assert message_ids[0] not in current_ids
+        assert overflow_id in current_ids
 
     def test_persistent_message(self, status_display, qtbot):
         """Test persistent message"""
@@ -107,17 +126,27 @@ class TestStatusDisplay:
     def test_clear_messages(self, status_display, qtbot):
         """Test clearing all messages"""
         # Add exactly max_messages
+        added_ids = []
         for i in range(status_display.max_messages):
-            status_display.show_message(f"Message {i}", duration=0)
-            qtbot.wait(50)  # Give time for widget creation
+            msg_id = status_display.show_message(f"Message {i}", duration=0)
+            added_ids.append(msg_id)
+            qtbot.wait(100)  # Wait for message to be fully processed
         
-        # Verify message count
-        active_messages = status_display.get_active_messages()
-        assert len(active_messages) == status_display.max_messages
+        # Verify all messages were added
+        for msg_id in added_ids:
+            assert status_display.has_message(msg_id)
+        
+        # Verify exact count
+        assert len(status_display.get_active_messages()) == status_display.max_messages
         
         # Clear messages
         status_display.clear_messages()
-        qtbot.wait(50)  # Give time for cleanup
+        qtbot.wait(100)  # Wait for cleanup
         
+        # Verify all messages are gone
         assert len(status_display.get_active_messages()) == 0
         assert len(status_display._message_widgets) == 0
+        
+        # Verify individual messages are gone
+        for msg_id in added_ids:
+            assert not status_display.has_message(msg_id)

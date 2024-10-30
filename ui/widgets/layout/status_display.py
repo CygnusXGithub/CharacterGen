@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum, auto
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, 
-    QLabel, QPushButton, QFrame
+    QLabel, QPushButton, QFrame, QApplication
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QIcon, QColor
@@ -43,6 +43,7 @@ class StatusDisplay(BaseWidget):
         self._message_timers: Dict[str, QTimer] = {}
         self._message_widgets: Dict[str, QFrame] = {}
         super().__init__(ui_manager, parent)
+        self.setVisible(True)
 
     def _setup_ui(self):
         """Setup status display UI"""
@@ -110,7 +111,7 @@ class StatusDisplay(BaseWidget):
     def show_message(self, 
                     text: str,
                     level: StatusLevel = StatusLevel.INFO,
-                    duration: int = 5000,  # 5 seconds default
+                    duration: int = 5000,
                     message_id: Optional[str] = None) -> str:
         """Show a new status message"""
         # Generate message ID if not provided
@@ -126,20 +127,22 @@ class StatusDisplay(BaseWidget):
             id=message_id
         )
         
-        # Remove old messages if at limit
-        current_count = len(self._active_messages)
-        if current_count >= self.max_messages:
-            # Find oldest message
+        # Remove oldest messages while we're at or above the limit
+        while len(self._active_messages) >= self.max_messages:
             oldest_id = min(
                 self._active_messages.keys(),
                 key=lambda k: self._active_messages[k].timestamp
             )
-            # Remove it before adding new one
             self.hide_message(oldest_id)
+            # Force processing of the hide event
+            QApplication.processEvents()
         
         # Add new message
         self._active_messages[message_id] = message
         self._create_message_widget(message)
+        
+        # Ensure visibility
+        self.setVisible(True)
         
         # Setup timer if needed
         if duration > 0:
@@ -150,6 +153,9 @@ class StatusDisplay(BaseWidget):
             self._message_timers[message_id] = timer
         
         self.message_shown.emit(message_id)
+        # Force processing of the show event
+        QApplication.processEvents()
+        
         return message_id
 
     def hide_message(self, message_id: str):
@@ -164,17 +170,20 @@ class StatusDisplay(BaseWidget):
             timer.deleteLater()
             del self._message_timers[message_id]
         
-        # Remove widget
+        # Remove widget first
         if message_id in self._message_widgets:
             widget = self._message_widgets[message_id]
             self._layout.removeWidget(widget)
             widget.deleteLater()
             del self._message_widgets[message_id]
         
-        # Remove message
+        # Remove message last
         del self._active_messages[message_id]
         
+        # Emit signal after cleanup
         self.message_hidden.emit(message_id)
+        # Force processing of the hide event
+        QApplication.processEvents()
 
     def clear_messages(self):
         """Clear all messages"""
@@ -213,12 +222,13 @@ class StatusDisplay(BaseWidget):
         # Add to layout before stretch
         insert_pos = self._layout.count() - 1 if self._layout.count() > 0 else 0
         self._layout.insertWidget(insert_pos, frame)
+        frame.setVisible(True)  # Explicitly set frame visibility
         self._message_widgets[message.id] = frame
         
-        # Apply level-specific styling
-        frame.setProperty("class", f"status_message {message.level.name.lower()}")
-        frame.style().unpolish(frame)
-        frame.style().polish(frame)
+        # Force layout update
+        self._layout.activate()
+        frame.show()  # Ensure frame is shown
+        self.update()  # Update the display
 
     def update_message(self,
                       message_id: str,
