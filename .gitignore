@@ -1,4 +1,6 @@
-
+/.vscode
 *.log
 *.pyc
 /venv
+*.code-workspace
+.coverage
