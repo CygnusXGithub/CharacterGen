@@ -35,14 +35,30 @@ class StatusDisplay(BaseWidget):
     message_hidden = pyqtSignal(str)  # Emitted when message is hidden (message_id)
     
     def __init__(self, 
-                 ui_manager: UIStateManager,
-                 parent: Optional[QWidget] = None,
-                 max_messages: int = 3):
+             ui_manager: UIStateManager, 
+             parent: Optional[QWidget] = None,
+             max_messages: int = 3): 
+        super().__init__(parent)
+        self.ui_manager = ui_manager
         self.max_messages = max_messages
+        
+        # Create main layout first
+        self._main_layout = QVBoxLayout(self)
+        self._main_layout.setContentsMargins(0, 0, 0, 0)
+        self._main_layout.setSpacing(0)
+        
+        # Create the message layout
+        self._message_layout = QVBoxLayout()
+        self._message_layout.setContentsMargins(8, 8, 8, 8)
+        self._message_layout.setSpacing(4)
+        self._main_layout.addLayout(self._message_layout)
+        
+        # Initialize other properties
         self._active_messages: Dict[str, StatusMessage] = {}
         self._message_timers: Dict[str, QTimer] = {}
         self._message_widgets: Dict[str, QFrame] = {}
-        super().__init__(ui_manager, parent)
+        
+        
         self.setVisible(True)
 
     def _setup_ui(self):

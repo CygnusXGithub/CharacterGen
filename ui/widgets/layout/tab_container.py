@@ -23,35 +23,51 @@ class TabContainer(BaseWidget):
     tab_changed = pyqtSignal(str)  # Emitted when active tab changes
     tab_state_changed = pyqtSignal(str, TabState)  # Emitted when tab state changes
     
-    def __init__(self, 
-                 ui_manager: UIStateManager, 
-                 parent: Optional[QWidget] = None):
+    def __init__(self, ui_manager: UIStateManager, parent: Optional[QWidget] = None):
+        super().__init__(ui_manager, parent)
         self._tabs: Dict[str, QWidget] = {}
         self._tab_states: Dict[str, TabState] = {}
-        self._buttons: Dict[str, QPushButton] = {}  # Add this line
+        self._buttons: Dict[str, QPushButton] = {}
         self._current_tab: Optional[str] = None
-        self._main_layout: Optional[QVBoxLayout] = None
-        self._tab_bar: Optional[QHBoxLayout] = None
-        self._content: Optional[QStackedWidget] = None
+        self._setup_ui()
         
-        super().__init__(ui_manager, parent)
-        
-    def _setup_ui(self):
-        """Setup tab container UI"""
-        # Main layout
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        # Create layout first
+        self._main_layout = QVBoxLayout(self)
+        self._main_layout.setContentsMargins(0, 0, 0, 0)
+        self._main_layout.setSpacing(0)
         
         # Tab bar
-        self._tab_bar = QHBoxLayout()
+        self._tab_bar_widget = QWidget()
+        self._tab_bar = QHBoxLayout(self._tab_bar_widget)
         self._tab_bar.setSpacing(2)
         self._tab_bar.setContentsMargins(4, 4, 4, 0)
-        layout.addLayout(self._tab_bar)
+        self._main_layout.addWidget(self._tab_bar_widget)
         
         # Content area
         self._content = QStackedWidget(self)
-        layout.addWidget(self._content)
+        self._main_layout.addWidget(self._content)
+        
+        self._setup_styling()
+        
+    def _setup_ui(self):
+        """Setup UI layout"""
+        # Main layout
+        self._main_layout = QVBoxLayout()
+        self._main_layout.setContentsMargins(0, 0, 0, 0)
+        self._main_layout.setSpacing(0)
+        self.setLayout(self._main_layout)
+        
+        # Tab bar
+        self._tab_bar_widget = QWidget()
+        self._tab_bar = QHBoxLayout()
+        self._tab_bar.setSpacing(2)
+        self._tab_bar.setContentsMargins(4, 4, 4, 0)
+        self._tab_bar_widget.setLayout(self._tab_bar)
+        self._main_layout.addWidget(self._tab_bar_widget)
+        
+        # Content area
+        self._content = QStackedWidget()
+        self._main_layout.addWidget(self._content)
         
         self._setup_styling()
 

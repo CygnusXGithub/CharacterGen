@@ -1,0 +1,33 @@
+api:
+  endpoint: "http://localhost:5000"
+  api_key: null
+  timeout: 30
+  retry_attempts: 3
+  batch_size: 10
+
+files:
+  save_dir: "saves"
+  backup_dir: "backups"
+  temp_dir: "temp"
+  max_backups: 5
+  auto_save_interval: 300
+  auto_save_enabled: true
+
+ui:
+  theme: "default"
+  font_size: 12
+  auto_expand_threshold: 1000
+  max_field_height: 600
+  show_line_numbers: true
+
+generation:
+  max_concurrent: 3
+  timeout: 30
+  max_retries: 3
+  batch_size: 5
+  preserve_history: true
+
+debug:
+  enabled: false
+  log_level: "INFO"
+  performance_logging: false

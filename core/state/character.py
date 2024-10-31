@@ -3,6 +3,8 @@ from datetime import datetime
 import asyncio
 from uuid import UUID
 
+from core.models.ui import StatusLevel
+
 from .base import StateManagerBase
 from ..models.character import CharacterData
 from ..services.validation import ValidationService
@@ -219,3 +221,31 @@ class CharacterStateManager(StateManagerBase):
             # Limit undo stack size
             while len(self._undo_stack) > 50:  # Configurable limit
                 self._undo_stack.pop(0)
+
+    async def initialize(self):
+        """Initialize state manager and check for auto-saves"""
+        try:
+            # Check for auto-save if no character is loaded
+            if not self._current_character:
+                # Look for most recent auto-save
+                auto_saves = list(self.file_service.config.temp_dir.glob("auto_save_*.json"))
+                if auto_saves:
+                    # Get most recent auto-save
+                    latest_auto_save = max(auto_saves, key=lambda p: p.stat().mtime)
+                    recovered_char = await self.file_service.recover_auto_save(
+                        latest_auto_save.stem.replace('auto_save_', '')
+                    )
+                    if recovered_char:
+                        self._current_character = recovered_char
+                        self._modified_fields.add("*")  # Mark as modified
+                        self.ui_manager.show_status(
+                            "Recovered unsaved changes from auto-save",
+                            StatusLevel.INFO
+                        )
+        except Exception as e:
+            self.error_handler.handle_error(
+                error=e,
+                category=ErrorCategory.STATE,
+                level=ErrorLevel.WARNING,
+                context={'operation': 'initialize'}
+            )
