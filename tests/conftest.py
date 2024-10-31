@@ -1,7 +1,11 @@
 import pytest
+from typing import Tuple, Dict, Any
 from PyQt6.QtWidgets import QApplication
 import tempfile
 from pathlib import Path
+from PIL import Image, PngImagePlugin
+import base64
+import json
 from core.errors import ErrorHandler
 from core.state.ui import UIStateManager
 from config.app_config import (
@@ -107,3 +111,32 @@ def validation_service(error_handler):
 def file_service(file_config, error_handler):
     """Provide file service"""
     return FileService(file_config, error_handler)
+
+@pytest.fixture
+def test_image_with_data(tmp_path) -> Tuple[Path, Dict[str, Any]]:
+    """Create a test image file with embedded character data"""
+    image_path = tmp_path / "test_char.png"
+    
+    # Sample character data
+    char_data = {
+        "name": "Test Character",
+        "description": "A test character",
+        "version": "1.0"
+    }
+    
+    # Create test image
+    img = Image.new('RGB', (100, 100), color='red')
+    
+    # Encode character data
+    encoded_json = base64.b64encode(
+        json.dumps(char_data).encode('utf-8')
+    ).decode('utf-8')
+    
+    # Create metadata
+    metadata = PngImagePlugin.PngInfo()
+    metadata.add_text("chara", encoded_json)
+    
+    # Save image with metadata
+    img.save(image_path, "PNG", pnginfo=metadata)
+    
+    return image_path, char_data
