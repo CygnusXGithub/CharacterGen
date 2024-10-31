@@ -8,6 +8,7 @@ from ..models.prompts import PromptSet
 from .prompt import PromptManager
 from .dependency import DependencyManager
 from ..errors import ErrorHandler, ErrorCategory, ErrorLevel
+from ..models.batch import BatchOperation, BatchStatus, BatchProgress
 
 @dataclass
 class QueuedGeneration:
@@ -40,7 +41,61 @@ class GenerationQueueManager:
         
         # Track dependencies
         self._blocking: Dict[UUID, Set[UUID]] = {}  # Request -> Requests it blocks
-        
+
+        self._batches: Dict[UUID, BatchOperation] = {}
+        self._request_to_batch: Dict[UUID, UUID] = {}
+    
+    async def create_batch(self,
+                          name: str,
+                          description: str = "",
+                          parent_batch_id: Optional[UUID] = None) -> UUID:
+        """Create a new batch operation"""
+        batch = BatchOperation(
+            name=name,
+            description=description,
+            parent_batch_id=parent_batch_id
+        )
+        self._batches[batch.id] = batch
+        return batch.id
+    
+    async def add_to_batch(self,
+                          batch_id: UUID,
+                          request_id: UUID) -> bool:
+        """Add a request to a batch"""
+        if batch_id not in self._batches or request_id in self._request_to_batch:
+            return False
+            
+        batch = self._batches[batch_id]
+        batch.request_ids.add(request_id)
+        self._request_to_batch[request_id] = batch_id
+        return True
+
+    async def start_batch(self, batch_id: UUID) -> bool:
+        """Start processing a batch"""
+        if batch_id not in self._batches:
+            return False
+            
+        batch = self._batches[batch_id]
+        if batch.status != BatchStatus.PENDING:
+            return False
+            
+        batch.started_at = datetime.now()
+        batch.status = BatchStatus.IN_PROGRESS
+        return True
+
+    def get_batch_progress(self, batch_id: UUID) -> Optional[BatchProgress]:
+        """Get current batch progress"""
+        if batch_id not in self._batches:
+            return None
+            
+        batch = self._batches[batch_id]
+        request_statuses = {
+            req_id: self.get_generation_status(req_id)
+            for req_id in batch.request_ids
+        }
+        batch.update_progress(request_statuses)
+        return batch.progress
+    
     async def queue_generation(self,
                             field: str,
                             prompt_set: PromptSet,
@@ -51,12 +106,12 @@ class GenerationQueueManager:
         try:
             request_id = uuid4()
             request = GenerationRequest(
-                field_name=field,
-                input_context=context,  # Changed from context to input_context
-                base_prompt_name=prompt_set.name,
-                base_prompt_version=prompt_set.version,
-                priority=priority,
-                id=request_id
+                    field_name=field,
+                    input_context=context,
+                    base_prompt_name=str(prompt_set.name),  # Ensure it's a string
+                    base_prompt_version=str(getattr(prompt_set, 'version', '1.0')),  # Default to '1.0' if not present
+                    priority=priority,
+                    id=request_id
             )
             
             # Create generation entry
@@ -176,6 +231,16 @@ class GenerationQueueManager:
                     if blocked_id in self._queued:
                         self._queued[blocked_id].dependencies.remove(request_id)
             
+            # Update batch if request is part of one
+            if request_id in self._request_to_batch:
+                batch_id = self._request_to_batch[request_id]
+                batch = self._batches[batch_id]
+                self.get_batch_progress(batch_id)  # Update progress
+                
+                # Check if batch is complete
+                if batch.status in [BatchStatus.COMPLETED, BatchStatus.PARTIALLY_COMPLETED]:
+                    batch.completed_at = datetime.now()
+            
             return gen_result
             
         except Exception as e:
@@ -246,6 +311,11 @@ class GenerationQueueManager:
                                 error_message=f"Dependent generation {request_id} failed"
                             )
                             self._failed[blocked_id] = dep_result
+
+            # Update batch if request is part of one
+            if request_id in self._request_to_batch:
+                batch_id = self._request_to_batch[request_id]
+                self.get_batch_progress(batch_id)  # Update progress
             
             return gen_result
             
@@ -346,3 +416,24 @@ class GenerationQueueManager:
         
         for req_id in to_remove:
             del self._failed[req_id]
+
+    async def cancel_batch(self, batch_id: UUID) -> bool:
+        """Cancel all generations in a batch"""
+        if batch_id not in self._batches:
+            return False
+            
+        batch = self._batches[batch_id]
+        
+        # Cancel all requests in the batch
+        for request_id in batch.request_ids:
+            await self.cancel_generation(request_id)
+            
+            # Clean up batch tracking
+            if request_id in self._request_to_batch:
+                del self._request_to_batch[request_id]
+                
+        # Update batch status
+        batch.status = BatchStatus.CANCELLED
+        batch.completed_at = datetime.now()
+        
+        return True

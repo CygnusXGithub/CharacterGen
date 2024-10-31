@@ -149,7 +149,8 @@ class TestDependencyManager:
             test_prompt_set
         )
         assert set(chain.dependent_fields) == {"personality", "scenario"}
-        assert chain.reason["personality"] == {"name", "description"}
+        # scenario should have a reason (depends on personality which we're regenerating)
+        assert chain.reason["scenario"] == {"personality"}
 
     def test_nonexistent_field(self, dependency_manager, test_prompt_set):
         """Test handling of nonexistent fields"""
