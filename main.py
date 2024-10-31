@@ -1,261 +1,295 @@
-#!/usr/bin/env python3
 import sys
 import logging
-import json
-import os
+import asyncio
+import aiofiles
+import yaml
 from pathlib import Path
-from datetime import datetime
-from PyQt6.QtWidgets import QApplication, QMessageBox, QSplashScreen
-from PyQt6.QtGui import QPixmap
-from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import QTimer
+from qasync import QEventLoop, asyncSlot, asyncClose
 
-from src.core.config import AppConfig, get_config
-from src.core.enums import StatusLevel, EventType
-from src.core.managers import (
-    CharacterStateManager,
-    GenerationManager,
-    SettingsManager,
-    UIStateManager
-)
+from config.app_config import AppConfig
+from core.errors import ErrorHandler, ErrorCategory, ErrorLevel
+from core.state.character import CharacterStateManager
+from core.state.ui import UIStateManager
+from core.state.config import ConfigurationManager
+from core.state.metadata import MetadataManager
+from core.services.file import FileService
+from core.services.validation import ValidationService
+from core.services.character_handler import CharacterDataHandler
+from core.services.prompt import PromptManager
+from core.services.generation_tracking import GenerationTrackingService
+from core.services.queue import GenerationQueueManager
+from core.services.dependency import DependencyManager
+from core.services.versioning import VersioningService
+from core.services.context_preservation import ContextPreservationService
+from ui.windows.main_window import MainWindow
 
-from src.services.api_service import ApiService
-from src.services.character_service import CharacterService
-from src.services.generation_service import GenerationService
-from src.services.prompt_service import PromptService
-from src.ui.main_window import MainWindow
-from src.core.exceptions import ConfigError, FileError
+class CharacterGenApp:
+    """Main application class"""
+    
+    def __init__(self):
+        # Initialize Qt Application
+        self.app = QApplication(sys.argv)
+        
+        # Create event loop
+        self.loop = QEventLoop(self.app)
+        asyncio.set_event_loop(self.loop)
+        
+        # Setup logging
+        self._setup_logging()
+        self.logger = logging.getLogger('CharacterGen')
+        
+        # Initialize core components
+        self.loop.create_task(self._init_core_components())
+    
+        # Register cleanup
+        self.app.aboutToQuit.connect(self._cleanup)
 
-def setup_logging(config: AppConfig) -> logging.Logger:
-    """Configure application logging based on config"""
-    # Create logs directory
-    log_dir = config.paths.logs_dir
-    log_dir.mkdir(exist_ok=True)
-    
-    # Set up log file with timestamp
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = log_dir / f"charactergen_{timestamp}.log"
-    
-    # Configure logging based on debug settings
-    handlers = []
-    
-    if config.debug.enable_file_logging:
-        handlers.append(logging.FileHandler(log_file))
-    
-    if config.debug.enable_console_logging:
-        handlers.append(logging.StreamHandler(sys.stdout))
-    
-    # Configure logging
-    logging.basicConfig(
-        level=getattr(logging, config.debug.logging_level),
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=handlers
-    )
-    
-    # Create logger for this module
-    logger = logging.getLogger(__name__)
-    return logger
+    def _setup_logging(self):
+        """Initialize logging configuration"""
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler('charactergen.log'),
+                logging.StreamHandler()
+            ]
+        )
 
-def check_dependencies() -> bool:
-    """Check if all required dependencies are available"""
-    required_packages = {
-        "PyQt6": "GUI framework",
-        "PIL": "Image processing",
-        "requests": "API communication",
-        "yaml": "Configuration handling"
-    }
-    
-    missing_packages = []
-    
-    for package, description in required_packages.items():
+    async def _init_core_components(self):
+        """Initialize all core application components"""
         try:
-            __import__(package)
-        except ImportError:
-            # Map internal package names to pip install names
-            pip_name = "Pillow" if package == "PIL" else "pyyaml" if package == "yaml" else package
-            missing_packages.append(f"{pip_name} ({description})")
-    
-    if missing_packages:
-        error_message = (
-            "The following required packages are missing:\n\n"
-            f"{chr(10).join(missing_packages)}\n\n"
-            "Please install them using pip:\n"
-            "pip install " + " ".join(p.split()[0] for p in missing_packages)
-        )
-        QMessageBox.critical(None, "Missing Dependencies", error_message)
-        return False
-    
-    return True
-
-def check_directories(config: AppConfig) -> bool:
-    """Check and create required directories"""
-    try:
-        # Directories are created in PathConfig initialization
-        # Just verify they exist and are writable
-        required_dirs = [
-            config.paths.characters_dir,
-            config.paths.base_prompts_dir,
-            config.paths.config_dir,
-            config.paths.logs_dir
-        ]
-        
-        for directory in required_dirs:
-            if not directory.exists():
-                raise FileError(f"Required directory does not exist: {directory}")
-            if not os.access(directory, os.W_OK):
-                raise FileError(f"Directory is not writable: {directory}")
+            # Setup config
+            config_path = Path('config/app_config.yaml')
+            config_path.parent.mkdir(parents=True, exist_ok=True)
             
-        return True
-        
-    except Exception as e:
-        QMessageBox.critical(
-            None,
-            "Directory Error",
-            f"Error with application directories: {str(e)}"
-        )
-        return False
-
-def create_splash_screen() -> QSplashScreen:
-    """Create and return a splash screen"""
-    # Create a basic splash screen
-    pixmap = QPixmap(400, 200)
-    pixmap.fill(Qt.GlobalColor.white)
-    
-    splash = QSplashScreen(pixmap)
-    splash.show()
-    return splash
-
-def initialize_managers(config: AppConfig, logger: logging.Logger):
-    """Initialize all managers and services"""
-    try:
-        # Initialize services first
-        api_service = ApiService(config)
-        character_service = CharacterService(config.paths)
-        prompt_service = PromptService(config.paths)
-        generation_service = GenerationService(api_service, prompt_service)
-        
-        # Create managers in dependency order
-        settings_manager = SettingsManager()
-        ui_manager = UIStateManager()
-        character_manager = CharacterStateManager(character_service)
-        generation_manager = GenerationManager(generation_service, character_manager)
-        
-        # Connect manager signals for logging
-        ui_manager.status_message.connect(
-            lambda msg, level: logger.log(
-                logging.INFO if level == StatusLevel.INFO else logging.WARNING,
-                msg
+            # Create default config if it doesn't exist
+            if not config_path.exists():
+                self._create_default_config(config_path)
+            
+            # Load configuration
+            self.config = AppConfig.load(config_path)
+            
+            # Create required directories
+            Path(self.config.files.save_dir).mkdir(parents=True, exist_ok=True)
+            Path(self.config.files.backup_dir).mkdir(parents=True, exist_ok=True)
+            Path(self.config.files.temp_dir).mkdir(parents=True, exist_ok=True)
+            
+            # Initialize managers and services
+            await self._init_managers_and_services()
+            
+            # Create main window
+            self.main_window = MainWindow(
+                character_manager=self.character_manager,
+                ui_manager=self.ui_manager,
+                config_manager=self.config_manager
             )
-        )
-        
-        return {
-            'managers': {
-                'settings_manager': settings_manager,
-                'ui_manager': ui_manager,
-                'character_manager': character_manager,
-                'generation_manager': generation_manager
+            
+            # Show window
+            self.main_window.show()
+            
+        except Exception as e:
+            self.logger.critical(f"Failed to initialize core components: {str(e)}")
+            raise
+            
+        except Exception as e:
+            self.logger.critical(f"Failed to initialize core components: {str(e)}")
+            raise
+    
+    async def _init_managers_and_services(self):
+        """Initialize managers and services"""
+        try:
+            # Initialize error handler first
+            self.error_handler = ErrorHandler()
+            
+            # Initialize services in correct order
+            self.validation_service = ValidationService(
+                error_handler=self.error_handler
+            )
+            
+            self.file_service = FileService(
+                config=self.config.files,
+                error_handler=self.error_handler
+            )
+            
+            self.prompt_manager = PromptManager(
+                error_handler=self.error_handler
+            )
+            
+            self.dependency_manager = DependencyManager(
+                error_handler=self.error_handler
+            )
+            
+            self.generation_tracking = GenerationTrackingService(
+                error_handler=self.error_handler
+            )
+            
+            self.generation_queue = GenerationQueueManager(
+                prompt_manager=self.prompt_manager,
+                dependency_manager=self.dependency_manager,
+                error_handler=self.error_handler,
+                max_concurrent=self.config.generation.max_concurrent
+            )
+            
+            self.context_service = ContextPreservationService(
+                error_handler=self.error_handler,
+                storage_path=self.config.files.temp_dir / "contexts"
+            )
+            
+            self.versioning_service = VersioningService(
+                error_handler=self.error_handler
+            )
+            
+            self.character_handler = CharacterDataHandler(
+                file_service=self.file_service,
+                validation_service=self.validation_service,
+                error_handler=self.error_handler
+            )
+            
+            # Initialize managers in correct order
+            self.config_manager = ConfigurationManager(
+                config_path=Path('config/app_config.yaml'),
+                error_handler=self.error_handler
+            )
+            
+            self.metadata_manager = MetadataManager(
+                error_handler=self.error_handler
+            )
+            
+            self.ui_manager = UIStateManager(
+                error_handler=self.error_handler
+            )
+            
+            self.character_manager = CharacterStateManager(
+                validation_service=self.validation_service,
+                file_service=self.file_service,
+                error_handler=self.error_handler
+            )
+            
+            # Connect manager signals
+            self._connect_managers()
+            
+            # Initialize character manager
+            await self.character_manager.initialize()
+            
+            # Setup auto-save timer
+            self._setup_auto_save()
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize managers and services: {str(e)}")
+            raise
+
+    def _create_default_config(self, config_path: Path):
+        """Create default configuration file"""
+        default_config = {
+            "api": {
+                "endpoint": "http://localhost:5000",
+                "api_key": None,
+                "timeout": 30,
+                "retry_attempts": 3,
+                "batch_size": 10
             },
-            'services': {
-                'api_service': api_service,
-                'character_service': character_service,
-                'prompt_service': prompt_service,
-                'generation_service': generation_service
+            "files": {
+                "save_dir": "saves",
+                "backup_dir": "backups",
+                "temp_dir": "temp",
+                "max_backups": 5,
+                "auto_save_interval": 300,
+                "auto_save_enabled": True
+            },
+            "ui": {
+                "theme": "default",
+                "font_size": 12,
+                "auto_expand_threshold": 1000,
+                "max_field_height": 600,
+                "show_line_numbers": True
+            },
+            "generation": {
+                "max_concurrent": 3,
+                "timeout": 30,
+                "max_retries": 3,
+                "batch_size": 5,
+                "preserve_history": True
+            },
+            "debug": {
+                "enabled": False,
+                "log_level": "INFO",
+                "performance_logging": False
             }
         }
-    
-    except Exception as e:
-        logger.error(f"Error initializing managers: {str(e)}")
-        raise
+        
+        with open(config_path, 'w') as f:
+            yaml.safe_dump(default_config, f, default_flow_style=False)
+            
+    def _connect_managers(self):
+        """Connect inter-manager signals"""
+        # Character -> UI updates
+        self.character_manager.state_changed.connect(
+            self.ui_manager.handle_character_state_change
+        )
+        
+        # Metadata -> Character updates
+        self.metadata_manager.state_changed.connect(
+            self.character_manager.handle_metadata_change
+        )
+        
+        # Generation -> Character updates
+        self.generation_queue.generation_completed.connect(
+            self.character_manager.handle_generation_result
+        )
+
+    def _setup_auto_save(self):
+        """Setup auto-save timer"""
+        self.auto_save_timer = QTimer()
+        self.auto_save_timer.timeout.connect(self._auto_save)
+        self.auto_save_timer.start(self.config.files.auto_save_interval * 1000)
+
+    def _auto_save(self):
+        """Perform auto-save operation"""
+        try:
+            if self.character_manager.has_unsaved_changes():
+                current_char = self.character_manager.get_current_character()
+                if current_char:
+                    asyncio.create_task(self.file_service.auto_save(current_char))
+        except Exception as e:
+            self.logger.error(f"Auto-save failed: {str(e)}")
+
+    @asyncClose
+    async def _cleanup(self):
+        """Perform cleanup before application exit"""
+        try:
+            # Final auto-save
+            if self.character_manager.has_unsaved_changes():
+                current_char = self.character_manager.get_current_character()
+                if current_char:
+                    await self.file_service.auto_save(current_char)
+            
+            # Cleanup temp files
+            await self.file_service.cleanup_temp_files()
+            
+            # Additional cleanup
+            await self.context_service.cleanup()
+            
+        except Exception as e:
+            self.logger.error(f"Cleanup failed: {str(e)}")
+
+    def run(self):
+        """Run the application"""
+        try:
+            with self.loop:  # This ensures proper cleanup
+                return self.loop.run_forever()
+        except Exception as e:
+            self.logger.critical(f"Application crashed: {str(e)}")
+            return 1
 
 def main():
-    """Main application entry point"""
-    # Create application instance
-    app = QApplication(sys.argv)
-    app.setApplicationName("Character Generator")
-    app.setApplicationVersion("2.3.0")
-    app.setOrganizationName("CharacterGen")
-    
+    """Application entry point"""
     try:
-        # Show splash screen
-        splash = create_splash_screen()
-        splash.showMessage(
-            "Starting Character Generator...",
-            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter
-        )
-        app.processEvents()
-        
-        # Load configuration
-        splash.showMessage(
-            "Loading configuration...",
-            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter
-        )
-        config = get_config()
-        
-        # Set up logging
-        logger = setup_logging(config)
-        logger.info("Starting Character Generator")
-        
-        # Perform startup checks
-        checks = [
-            ("Checking dependencies...", check_dependencies),
-            ("Checking directories...", lambda: check_directories(config))
-        ]
-        
-        for message, check_func in checks:
-            splash.showMessage(
-                message,
-                Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter
-            )
-            app.processEvents()
-            
-            if not check_func():
-                logger.error(f"Startup check failed: {message}")
-                return 1
-        
-        # Initialize managers
-        splash.showMessage(
-            "Initializing managers...",
-            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter
-        )
-        app.processEvents()
-        
-        initialized = initialize_managers(config, logger)
-        managers = initialized['managers']
-        services = initialized['services']
-        
-        # Create and show main window
-        splash.showMessage(
-            "Creating main window...",
-            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter
-        )
-        app.processEvents()
-        
-        window = MainWindow(
-            settings_manager=managers['settings_manager'],
-            ui_manager=managers['ui_manager'],
-            character_manager=managers['character_manager'],
-            generation_manager=managers['generation_manager'],
-            api_service=services['api_service'],
-            character_service=services['character_service'],
-            prompt_service=services['prompt_service'],
-            generation_service=services['generation_service']
-        )
-        window.show()
-        
-        # Close splash screen
-        splash.finish(window)
-        
-        # Start event loop
-        logger.info("Application started successfully")
-        return app.exec()
-        
+        app = CharacterGenApp()
+        return app.run()
     except Exception as e:
-        logger.critical(f"Unhandled exception: {str(e)}", exc_info=True)
-        QMessageBox.critical(
-            None,
-            "Critical Error",
-            f"An unexpected error occurred:\n\n{str(e)}\n\n"
-            "Please check the logs for more information."
-        )
+        logging.critical(f"Failed to start application: {str(e)}")
         return 1
 
 if __name__ == "__main__":
