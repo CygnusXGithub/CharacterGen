@@ -46,6 +46,7 @@ class GenerationQueueManager(QObject):
         self._completed: Dict[UUID, GenerationResult] = {}
         self._failed: Dict[UUID, GenerationResult] = {}
         
+        
         # Track dependencies
         self._blocking: Dict[UUID, Set[UUID]] = {}  # Request -> Requests it blocks
 

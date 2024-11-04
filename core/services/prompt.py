@@ -1,7 +1,7 @@
 import re
 from typing import Dict, Any, Set, Optional, Tuple, Match
-from ..models.prompts import PromptTemplate, ProcessedPrompt, TagType, PromptSet
-from ..errors import ErrorHandler, ErrorCategory, ErrorLevel
+from core.models.prompts import PromptTemplate, ProcessedPrompt, TagType, PromptSet
+from core.errors import ErrorHandler, ErrorCategory, ErrorLevel
 
 class PromptManager:
     """Manages prompt templates and processing"""

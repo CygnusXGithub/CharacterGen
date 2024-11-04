@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from ..models.generation import (
+from core.models.generation import (
     GenerationRequest, GenerationResult, GenerationQueue, GenerationStatus
 )
 from ..errors import ErrorHandler, StateError, ErrorCategory, ErrorLevel

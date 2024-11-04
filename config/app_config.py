@@ -3,6 +3,21 @@ from typing import Dict, Optional, List
 from pathlib import Path
 import yaml
 
+@classmethod
+def create_default(cls) -> 'AppConfig':
+    """Missing method referenced in main.py"""
+    return cls(
+        api=ApiConfig(endpoint="http://localhost:5000"),
+        files=FileConfig(
+            save_dir=Path("saves"),
+            backup_dir=Path("backups"),
+            temp_dir=Path("temp")
+        ),
+        ui=UIConfig(),
+        generation=GenerationConfig(),
+        debug=DebugConfig()
+    )
+
 @dataclass
 class ApiConfig:
     """API configuration"""
@@ -101,7 +116,7 @@ class AppConfig:
                 
         except Exception as e:
             raise ConfigError(f"Failed to save config: {str(e)}")
-
+    
 class ConfigError(Exception):
     """Configuration-related errors"""
     pass

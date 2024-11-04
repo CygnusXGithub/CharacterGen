@@ -20,9 +20,17 @@ class FileService:
         self.logger = logging.getLogger(__name__)
         
         # Initial directory setup
-        self.ensure_directory(self.config.save_dir)
-        self.ensure_directory(self.config.backup_dir)
-        self.ensure_directory(self.config.temp_dir)
+        try:
+            self.ensure_directory(self.config.save_dir)
+            self.ensure_directory(self.config.backup_dir)
+            self.ensure_directory(self.config.temp_dir)
+        except Exception as e:
+            self.error_handler.handle_error(
+                error=e,
+                category=ErrorCategory.FILE,
+                level=ErrorLevel.ERROR,
+                context={'operation': 'directory_setup'}
+            )
 
     def ensure_directory(self, path: Path):
         """Ensure directory exists"""

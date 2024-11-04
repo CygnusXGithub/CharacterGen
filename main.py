@@ -30,13 +30,22 @@ class ApplicationManager:
         # Setup logging first
         self._setup_logging()
         self.logger = logging.getLogger('CharacterGen')
+        self._active_messages = {}  # For status display
+        self._message_widgets = {}  # For status display
+        self._message_timers = {}   # For status display
         
         # Core components
-        self.error_handler = ErrorHandler()  # Initialize immediately
+        self.error_handler = ErrorHandler()  
         self.services = {}
         self.managers = {}
         self.main_window = None
         self.config = None
+        
+        # Add these instance variables
+        self.character_manager = None
+        self.ui_manager = None
+        self.config_manager = None
+        self.metadata_manager = None
         
         # Initialize Qt Application if not exists
         self.app = QApplication.instance()
@@ -59,28 +68,30 @@ class ApplicationManager:
     async def initialize(self):
         """Initialize application components"""
         try:
+            self.logger.info("Starting initialization...")
+            
             # Load configuration
             config_path = Path('config/app_config.yaml')
             config_path.parent.mkdir(parents=True, exist_ok=True)
             self.config = await self._load_config(config_path)
+            self.logger.info("Configuration loaded")
 
             # Initialize services first
             await self._init_services(self.config)
+            self.logger.info("Services initialized")
             
-            # Initialize managers with service dependencies
+            # Initialize managers
             await self._init_managers()
+            self.logger.info("Managers initialized")
             
-            # Initialize UI with manager instances
+            # Initialize UI
             await self._init_ui()
-
-            # Setup auto-save timer
-            if self.config.files.auto_save_interval:
-                self._setup_auto_save(self.config.files.auto_save_interval)
+            self.logger.info("UI initialized")
 
             return True
 
         except Exception as e:
-            self.logger.critical(f"Failed to initialize application: {str(e)}")
+            self.logger.critical(f"Failed to initialize application: {str(e)}", exc_info=True)
             return False
 
     async def _load_config(self, config_path: Path) -> AppConfig:
@@ -197,7 +208,7 @@ class ApplicationManager:
             tracking = self.services['generation_tracking']
             # Check the correct attribute names
             assert queue.max_concurrent > 0
-            assert tracking.max_concurrent > 0  
+            assert tracking._max_concurrent > 0  
             # Check signal exists
             assert hasattr(queue, 'generation_completed')
             self.logger.info("Generation system verification: OK")
@@ -208,20 +219,25 @@ class ApplicationManager:
     async def _init_managers(self):
         """Initialize managers with proper dependencies"""
         try:
-            # Initialize managers with required services
+            # First create metadata manager as others depend on it
+            self.metadata_manager = MetadataManager(self.error_handler)
+            
+            # Initialize character manager with dependencies
             self.character_manager = CharacterStateManager(
                 validation_service=self.services['validation'],
                 file_service=self.services['file'],
-                error_handler=self.error_handler
+                error_handler=self.error_handler,
+                metadata_manager=self.metadata_manager
             )
             
+            # Initialize UI manager
             self.ui_manager = UIStateManager(self.error_handler)
+            
+            # Initialize config manager
             self.config_manager = ConfigurationManager(
                 Path('config/app_config.yaml'),
                 self.error_handler
             )
-            
-            self.metadata_manager = MetadataManager(self.error_handler)
             
             # Store in managers dict for reference
             self.managers = {
@@ -242,23 +258,26 @@ class ApplicationManager:
     def _connect_managers(self):
         """Connect inter-manager signals"""
         # Character -> UI updates
-        self.managers['character'].state_changed.connect(
-            self.managers['ui'].handle_character_state_change
+        self.character_manager.state_changed.connect(
+            self.ui_manager.handle_character_state_change
         )
 
         # Metadata -> Character updates
-        self.managers['metadata'].state_changed.connect(
-            self.managers['character'].handle_metadata_change
+        self.metadata_manager.state_changed.connect(
+            self.character_manager.handle_metadata_change
         )
 
         # Generation -> Character updates
         self.services['queue'].generation_completed.connect(
-            self.managers['character'].handle_generation_result
+            lambda request_id, content: self.loop.create_task(
+                self.character_manager.handle_generation_result(request_id, content)
+            )
         )
 
     async def _init_ui(self):
-        """Initialize UI with direct manager references"""
+        """Initialize UI with manager instances"""
         try:
+            # Pass the actual manager instances instead of accessing them through self.managers
             self.main_window = MainWindow(
                 character_manager=self.character_manager,
                 ui_manager=self.ui_manager,
@@ -273,7 +292,12 @@ class ApplicationManager:
     def _setup_auto_save(self, interval: int):
         """Setup auto-save timer"""
         self.auto_save_timer = QTimer()
-        self.auto_save_timer.timeout.connect(self._perform_auto_save)
+        # Change this line:
+        # self.auto_save_timer.timeout.connect(self._perform_auto_save)
+        # To:
+        self.auto_save_timer.timeout.connect(
+            lambda: self.loop.create_task(self._perform_auto_save())
+        )
         self.auto_save_timer.start(interval * 1000)
 
     async def _perform_auto_save(self):

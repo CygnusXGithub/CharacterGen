@@ -4,6 +4,7 @@ import asyncio
 from uuid import UUID
 
 from core.models.ui import StatusLevel
+from core.state.metadata import MetadataManager
 
 from .base import StateManagerBase
 from ..models.character import CharacterData
@@ -15,13 +16,16 @@ class CharacterStateManager(StateManagerBase):
     """Manages character state and operations"""
 
     def __init__(self, 
-                 validation_service: ValidationService,
-                 file_service: FileService,
-                 error_handler: ErrorHandler):
+                validation_service: ValidationService,
+                file_service: FileService,
+                error_handler: ErrorHandler,
+                metadata_manager: Optional[MetadataManager] = None):
         super().__init__()
         self.validation_service = validation_service
         self.file_service = file_service
         self.error_handler = error_handler
+        self.metadata_manager = metadata_manager  # Add this
+        self._initialize_state()
         
         # Current character state
         self._current_character: Optional[CharacterData] = None
@@ -35,6 +39,56 @@ class CharacterStateManager(StateManagerBase):
         # Save lock for async operations
         self._save_lock = asyncio.Lock()
 
+    async def handle_generation_result(self, request_id: UUID, content: str):
+        """Handle completed generation result"""
+        try:
+            with self.operation('handle_generation', {'request_id': str(request_id)}):
+                if not self._current_character:
+                    return
+
+                # Get request details from queue manager
+                request = self.services['queue'].get_generation_request(request_id)
+                if not request:
+                    return
+
+                # Store for undo
+                self._push_undo_state()
+
+                # Update field content
+                await self.update_field(
+                    field_name=request.field_name,
+                    value=content,
+                    validate=True
+                )
+
+                # Record generation in metadata
+                await self.metadata_manager.record_generation(
+                    field_name=request.field_name,
+                    generation_data={
+                        'prompt': request.base_prompt_content,
+                        'context': request.context,
+                        'result': content,
+                        'base_prompt_name': request.base_prompt_name,
+                        'base_prompt_version': request.base_prompt_version
+                    }
+                )
+
+        except Exception as e:
+            self.error_handler.handle_error(
+                error=e,
+                category=ErrorCategory.GENERATION,
+                level=ErrorLevel.ERROR,
+                context={'operation': 'handle_generation_result', 'request_id': str(request_id)}
+            )
+
+    def _initialize_state(self):
+        """Initialize empty character state"""
+        self._current_character = None
+        self._modified_fields.clear()
+        self._last_saved = None
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+        
     def get_current_character(self) -> Optional[CharacterData]:
         """Get current character data"""
         return self._current_character

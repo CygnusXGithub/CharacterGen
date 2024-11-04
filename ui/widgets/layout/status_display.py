@@ -34,12 +34,12 @@ class StatusDisplay(BaseWidget):
     message_shown = pyqtSignal(str)  # Emitted when message is displayed (message_id)
     message_hidden = pyqtSignal(str)  # Emitted when message is hidden (message_id)
     
-    def __init__(self, 
-                ui_manager: UIStateManager, 
-                parent: Optional[QWidget] = None,
-                max_messages: int = 3): 
+    def __init__(self, ui_manager: UIStateManager, parent: Optional[QWidget] = None):
         super().__init__(ui_manager, parent)
-        self.max_messages = max_messages
+        self._active_messages = {}
+        self._message_widgets = {}
+        self._message_timers = {}
+        self.max_messages = 3
 
     def _setup_ui(self):
         """Setup status display UI"""

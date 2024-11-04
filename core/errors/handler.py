@@ -1,4 +1,5 @@
 from enum import Enum, auto
+from pathlib import Path
 from typing import Optional, Dict, Any, Callable, List
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -51,6 +52,8 @@ class ErrorHandler:
         self.logger = logging.getLogger('ErrorHandler')
         self._error_history: List[ErrorInfo] = []
         self._recovery_handlers: Dict[str, Callable] = {}
+
+        self._setup_logging()
         
     def handle_error(self, 
                     error: Exception,
@@ -135,3 +138,17 @@ class ErrorHandler:
             filtered = [e for e in filtered if e.level == level]
             
         return filtered
+    
+    def _setup_logging(self):
+        """Configure error logging"""
+        log_dir = Path("logs")
+        log_dir.mkdir(exist_ok=True)
+        
+        file_handler = logging.FileHandler(
+            log_dir / "errors.log",
+            encoding='utf-8'
+        )
+        file_handler.setFormatter(
+            logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        )
+        self.logger.addHandler(file_handler)
