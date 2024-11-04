@@ -1,5 +1,6 @@
 # core/services/image.py
 """Service for handling character image operations."""
+from dataclasses import dataclass, field
 from typing import Optional, Dict
 from pathlib import Path
 import asyncio
