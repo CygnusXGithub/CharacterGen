@@ -1,3 +1,6 @@
+version: "1.0.0"
+last_modified: "2024-11-04T07:18:38.147"  # ISO format timestamp
+
 api:
   endpoint: "http://localhost:5000"
   api_key: null

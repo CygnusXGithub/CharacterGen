@@ -16,25 +16,25 @@ class CharacterStateManager(StateManagerBase):
     """Manages character state and operations"""
 
     def __init__(self, 
-                validation_service: ValidationService,
-                file_service: FileService,
-                error_handler: ErrorHandler,
-                metadata_manager: Optional[MetadataManager] = None):
+            validation_service: ValidationService,
+            file_service: FileService,
+            error_handler: ErrorHandler,
+            metadata_manager: Optional[MetadataManager] = None):
         super().__init__()
         self.validation_service = validation_service
         self.file_service = file_service
         self.error_handler = error_handler
-        self.metadata_manager = metadata_manager  # Add this
+        self.metadata_manager = metadata_manager
+        
+        # Initialize these before calling _initialize_state
+        self._modified_fields = set()  # Add this line
+        self._current_character = None
+        self._last_saved = None
+        self._undo_stack = []
+        self._redo_stack = []
+        
+        # Now call initialize state
         self._initialize_state()
-        
-        # Current character state
-        self._current_character: Optional[CharacterData] = None
-        self._modified_fields: Set[str] = set()
-        self._last_saved: Optional[datetime] = None
-        
-        # Undo/Redo stacks
-        self._undo_stack: List[CharacterData] = []
-        self._redo_stack: List[CharacterData] = []
         
         # Save lock for async operations
         self._save_lock = asyncio.Lock()
@@ -88,7 +88,7 @@ class CharacterStateManager(StateManagerBase):
         self._last_saved = None
         self._undo_stack.clear()
         self._redo_stack.clear()
-        
+
     def get_current_character(self) -> Optional[CharacterData]:
         """Get current character data"""
         return self._current_character

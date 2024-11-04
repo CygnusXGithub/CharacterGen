@@ -219,7 +219,10 @@ class ApplicationManager:
     async def _init_managers(self):
         """Initialize managers with proper dependencies"""
         try:
-            # First create metadata manager as others depend on it
+            # First create UI manager as others might depend on it
+            self.ui_manager = UIStateManager(self.error_handler)
+            
+            # Create metadata manager
             self.metadata_manager = MetadataManager(self.error_handler)
             
             # Initialize character manager with dependencies
@@ -229,9 +232,6 @@ class ApplicationManager:
                 error_handler=self.error_handler,
                 metadata_manager=self.metadata_manager
             )
-            
-            # Initialize UI manager
-            self.ui_manager = UIStateManager(self.error_handler)
             
             # Initialize config manager
             self.config_manager = ConfigurationManager(

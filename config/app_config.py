@@ -1,22 +1,8 @@
 from dataclasses import dataclass, field
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Any
 from pathlib import Path
 import yaml
-
-@classmethod
-def create_default(cls) -> 'AppConfig':
-    """Missing method referenced in main.py"""
-    return cls(
-        api=ApiConfig(endpoint="http://localhost:5000"),
-        files=FileConfig(
-            save_dir=Path("saves"),
-            backup_dir=Path("backups"),
-            temp_dir=Path("temp")
-        ),
-        ui=UIConfig(),
-        generation=GenerationConfig(),
-        debug=DebugConfig()
-    )
+from datetime import datetime
 
 @dataclass
 class ApiConfig:
@@ -45,7 +31,7 @@ class UIConfig:
     auto_expand_threshold: int = 1000
     max_field_height: int = 600
     show_line_numbers: bool = True
-
+    
 @dataclass
 class GenerationConfig:
     """Generation settings"""
@@ -65,19 +51,41 @@ class DebugConfig:
 @dataclass
 class AppConfig:
     """Complete application configuration"""
+    version: str = "1.0.0"
     api: ApiConfig
     files: FileConfig
     ui: UIConfig
     generation: GenerationConfig
     debug: DebugConfig
+    last_modified: datetime = field(default_factory=datetime.now)
     
+    @classmethod
+    def create_default(cls) -> 'AppConfig':
+        """Create default configuration"""
+        return cls(
+            api=ApiConfig(endpoint="http://localhost:5000"),
+            files=FileConfig(
+                save_dir=Path("saves"),
+                backup_dir=Path("backups"),
+                temp_dir=Path("temp")
+            ),
+            ui=UIConfig(),
+            generation=GenerationConfig(),
+            debug=DebugConfig()
+        )
+
     @classmethod
     def load(cls, config_path: Path) -> 'AppConfig':
         """Load configuration from YAML file"""
         try:
             with open(config_path) as f:
                 data = yaml.safe_load(f)
-                
+            
+            # Handle version upgrades if needed
+            current_version = data.get('version', '1.0.0')
+            if current_version != cls.version:
+                data = cls._migrate_config(data, current_version)
+            
             # Convert path strings to Path objects
             if 'files' in data:
                 for key in ['save_dir', 'backup_dir', 'temp_dir']:
@@ -85,8 +93,9 @@ class AppConfig:
                         data['files'][key] = Path(data['files'][key])
             
             return cls(
-                api=ApiConfig(**data['api']),
-                files=FileConfig(**data['files']),
+                version=current_version,
+                api=ApiConfig(**data.get('api', {})),
+                files=FileConfig(**data.get('files', {})),
                 ui=UIConfig(**data.get('ui', {})),
                 generation=GenerationConfig(**data.get('generation', {})),
                 debug=DebugConfig(**data.get('debug', {}))
@@ -94,11 +103,11 @@ class AppConfig:
         except Exception as e:
             raise ConfigError(f"Failed to load config: {str(e)}")
 
-    def save(self, config_path: Path):
+    def save(self, config_path: Path) -> None:
         """Save configuration to YAML file"""
         try:
-            # Convert to dictionary
             data = {
+                'version': self.version,
                 'api': self.api.__dict__,
                 'files': {
                     **self.files.__dict__,
@@ -108,7 +117,8 @@ class AppConfig:
                 },
                 'ui': self.ui.__dict__,
                 'generation': self.generation.__dict__,
-                'debug': self.debug.__dict__
+                'debug': self.debug.__dict__,
+                'last_modified': self.last_modified.isoformat()
             }
             
             with open(config_path, 'w') as f:
@@ -116,7 +126,13 @@ class AppConfig:
                 
         except Exception as e:
             raise ConfigError(f"Failed to save config: {str(e)}")
-    
+
+    @staticmethod
+    def _migrate_config(data: Dict[str, Any], old_version: str) -> Dict[str, Any]:
+        """Migrate configuration from older versions"""
+        # Add migration logic here as needed
+        return data
+
 class ConfigError(Exception):
     """Configuration-related errors"""
     pass

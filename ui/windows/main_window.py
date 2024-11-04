@@ -39,6 +39,7 @@ class MainWindow(QMainWindow):
         self._setup_menubar()
         self._setup_toolbar()
         self._setup_statusbar()
+        self._setup_tabs()
         self._connect_signals()
 
     def _setup_ui(self):
@@ -171,12 +172,12 @@ class MainWindow(QMainWindow):
 
     def _connect_signals(self):
         """Connect signals to slots"""
-        # Connect UI manager signals
-        self.ui_manager.status_updated.connect(self._update_status)
-        self.ui_manager.dialog_requested.connect(self._show_dialog)
+        if self.ui_manager:
+            self.ui_manager.status_updated.connect(self._update_status)
+            self.ui_manager.dialog_requested.connect(self._show_dialog)
         
-        # Connect character manager signals
-        self.character_manager.state_changed.connect(self._handle_character_state_change)
+        if self.character_manager:
+            self.character_manager.state_changed.connect(self._handle_character_state_change)
 
     # Action handlers
     def _new_character(self):

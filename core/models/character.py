@@ -1,99 +1,78 @@
-from dataclasses import dataclass, field, replace
-from typing import Dict, List, Optional, Any
-from datetime import datetime
-from uuid import UUID, uuid4
+# core/models/character.py
+"""Character data model and related types."""
+from dataclasses import dataclass, field
+from typing import Any, List, Dict, Optional, Set
 import copy
-from .versioning import VersionHistory, VersionChange, ChangeType
+
+from ..common.types import (
+    BaseModel, JsonDict, ChangeType,
+    Result, Timestamp
+)
+from .versioning import VersionHistory, VersionChange
 
 @dataclass
-class CharacterVersion:
-    """Version information for character data"""
-    major: int
-    minor: int
-    patch: int
-    migration_date: Optional[datetime] = None
-
-    @staticmethod
-    def from_string(version_str: str) -> 'CharacterVersion':
-        try:
-            major, minor, patch = map(int, version_str.split('.'))
-            return CharacterVersion(major, minor, patch)
-        except ValueError:
-            return CharacterVersion(1, 0, 0)  # Default version
-
-    def __eq__(self, other: 'CharacterVersion') -> bool:
-        if not isinstance(other, CharacterVersion):
-            return NotImplemented
-        return (self.major, self.minor, self.patch) == (other.major, other.minor, other.patch)
-
-    def __str__(self) -> str:
-        return f"{self.major}.{self.minor}.{self.patch}"
-
-    def __lt__(self, other: 'CharacterVersion') -> bool:
-        return (self.major, self.minor, self.patch) < (other.major, other.minor, other.patch)
-    
-    def __le__(self, other: 'CharacterVersion') -> bool:
-        """Implement less than or equal to comparison"""
-        if not isinstance(other, CharacterVersion):
-            return NotImplemented
-        return (self.major, self.minor, self.patch) <= (other.major, other.minor, other.patch)
-    
-@dataclass
-class CharacterGenMetadata:
-    """Metadata specific to character generation"""
+class CharacterMetadata(BaseModel):
+    """Metadata specific to character generation."""
     version_history: VersionHistory = field(default_factory=VersionHistory)
-    generation_history: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
-    last_validated: Optional[datetime] = None
-    validation_state: Dict[str, Any] = field(default_factory=dict)
-    custom_settings: Dict[str, Any] = field(default_factory=dict)
+    generation_history: Dict[str, List[JsonDict]] = field(default_factory=dict)
+    last_validated: Optional[Timestamp] = None
+    validation_state: JsonDict = field(default_factory=dict)
+    custom_settings: JsonDict = field(default_factory=dict)
     created_with: str = "CharacterGen"
-    last_modified: Optional[str] = None
+    
+    def update(self, data: JsonDict) -> Result:
+        """Update metadata fields."""
+        try:
+            for key, value in data.items():
+                if hasattr(self, key):
+                    setattr(self, key, value)
+                else:
+                    self.custom_settings[key] = value
+            return Result(True, "Metadata updated successfully")
+        except Exception as e:
+            return Result(False, f"Failed to update metadata: {str(e)}", error=e)
 
-    def update(self, data: Dict[str, Any]):
-        """Update metadata fields"""
-        for key, value in data.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
-            else:
-                self.custom_settings[key] = value
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert metadata to dictionary"""
-        base_dict = {
+    def to_dict(self) -> JsonDict:
+        """Convert metadata to dictionary."""
+        data = super().to_dict()
+        data.update({
             "generation_history": self.generation_history,
             "last_validated": self.last_validated.isoformat() if self.last_validated else None,
             "validation_state": self.validation_state,
             "custom_settings": self.custom_settings,
             "created_with": self.created_with,
-            "last_modified": self.last_modified or datetime.now().isoformat(),
-            "version_history": self.version_history.to_dict() if self.version_history else {}
-        }
-        return base_dict
+            "version_history": self.version_history.to_dict()
+        })
+        return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'CharacterGenMetadata':
-        """Create metadata from dictionary"""
+    def from_dict(cls, data: JsonDict) -> 'CharacterMetadata':
+        """Create metadata from dictionary."""
         if data is None:
             return cls()
 
-        version_history = VersionHistory()
-        if 'version_history' in data:
-            version_history.from_dict(data['version_history'])
+        base_data = {
+            'id': data.get('id', None),
+            'created_at': data.get('created_at', None),
+            'modified_at': data.get('modified_at', None)
+        }
+
+        version_history = VersionHistory.from_dict(data['version_history']) if 'version_history' in data else VersionHistory()
 
         return cls(
+            **base_data,
             version_history=version_history,
             generation_history=data.get('generation_history', {}),
-            last_validated=datetime.fromisoformat(data['last_validated']) if data.get('last_validated') else None,
+            last_validated=Timestamp.fromisoformat(data['last_validated']) if data.get('last_validated') else None,
             validation_state=data.get('validation_state', {}),
             custom_settings=data.get('custom_settings', {}),
-            created_with=data.get('created_with', "CharacterGen"),
-            last_modified=data.get('last_modified')
+            created_with=data.get('created_with', "CharacterGen")
         )
-    
+
 @dataclass
-class CharacterData:
-    """Immutable character data container"""
-    # Template-required fields
+class CharacterData(BaseModel):
+    """Character data container."""
+    # Required fields
     name: str = ""
     description: str = ""
     personality: str = ""
@@ -104,41 +83,42 @@ class CharacterData:
     creator_notes: str = ""
     system_prompt: str = ""
     post_history_instructions: str = ""
-    alternate_greetings: List[str] = field(default_factory=list)
-    tags: List[str] = field(default_factory=list)
-    creator: str = "Anonymous"
-    character_version: str = ""
     
-    # Internal tracking fields
-    id: UUID = field(default_factory=uuid4)
-    created_at: datetime = field(default_factory=datetime.now)
-    modified_at: datetime = field(default_factory=datetime.now)
+    # Optional fields
+    alternate_greetings: List[str] = field(default_factory=list)
+    tags: Set[str] = field(default_factory=set)
+    creator: str = "Anonymous"
+    character_version: str = "1.0.0"
     
     # Private fields for extension handling
     _extensions: Dict[str, Any] = field(default_factory=dict, repr=False)
-    _charactergen_metadata: CharacterGenMetadata = field(
-        default_factory=CharacterGenMetadata,
+    _charactergen_metadata: CharacterMetadata = field(
+        default_factory=CharacterMetadata,
         repr=False
     )
     
     def copy(self) -> 'CharacterData':
-        """Create a deep copy of the character data"""
-        # Create a new instance with copied basic fields
-        new_char = replace(self)
-        
-        # Deep copy mutable fields
-        new_char.alternate_greetings = copy.deepcopy(self.alternate_greetings)
-        new_char.tags = copy.deepcopy(self.tags)
-        new_char._extensions = copy.deepcopy(self._extensions)
-        
-        # Copy metadata if it exists
-        if self._charactergen_metadata:
-            new_char._charactergen_metadata = copy.deepcopy(self._charactergen_metadata)
-        
+        """Create a deep copy of the character data."""
+        new_char = copy.deepcopy(self)
+        new_char.modified_at = Timestamp.now()
         return new_char
     
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to template format"""
+    def validate(self) -> Result:
+        """Validate character data."""
+        try:
+            if not self.name:
+                return Result(False, "Character name is required")
+            if not self.first_mes:
+                return Result(False, "First message is required")
+                
+            # Add more validation as needed
+            return Result(True, "Character data is valid")
+        except Exception as e:
+            return Result(False, f"Validation error: {str(e)}", error=e)
+    
+    def to_dict(self) -> JsonDict:
+        """Convert to template format."""
+        base_data = super().to_dict()
         char_data = {
             "name": self.name,
             "description": self.description,
@@ -150,8 +130,8 @@ class CharacterData:
             "creator_notes": self.creator_notes,
             "system_prompt": self.system_prompt,
             "post_history_instructions": self.post_history_instructions,
-            "alternate_greetings": self.alternate_greetings,
-            "tags": self.tags,
+            "alternate_greetings": list(self.alternate_greetings),
+            "tags": list(self.tags),
             "creator": self.creator,
             "character_version": self.character_version,
             "extensions": {
@@ -161,83 +141,83 @@ class CharacterData:
         }
 
         return {
-            "data": char_data,
             "spec": "chara_card_v2",
-            "spec_version": "2.0"
+            "spec_version": "2.0",
+            "data": char_data,
+            "base": base_data
         }
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'CharacterData':
-        """Create from template format"""
-        # Handle both full template and data-only format
+    def from_dict(cls, data: JsonDict) -> 'CharacterData':
+        """Create from template format."""
+        # Extract the actual character data
         char_data = data.get('data', data)
+        base_data = data.get('base', {})
         
-        # Extract base fields
-        base_fields = {
-            field: char_data.get(field, "") 
-            for field in [
-                "name", "description", "personality", "first_mes",
-                "avatar", "mes_example", "scenario", "creator_notes",
-                "system_prompt", "post_history_instructions",
-                "creator", "character_version"
-            ]
-        }
-        
-        # Handle list fields
-        base_fields["alternate_greetings"] = char_data.get("alternate_greetings", [])
-        base_fields["tags"] = char_data.get("tags", [])
-        
-        # Create instance
-        instance = cls(**base_fields)
+        # Create instance with base data
+        instance = cls(
+            id=base_data.get('id'),
+            created_at=base_data.get('created_at'),
+            modified_at=base_data.get('modified_at'),
+            
+            # Character fields
+            name=char_data.get('name', ''),
+            description=char_data.get('description', ''),
+            personality=char_data.get('personality', ''),
+            first_mes=char_data.get('first_mes', ''),
+            avatar=char_data.get('avatar', 'none'),
+            mes_example=char_data.get('mes_example', ''),
+            scenario=char_data.get('scenario', ''),
+            creator_notes=char_data.get('creator_notes', ''),
+            system_prompt=char_data.get('system_prompt', ''),
+            post_history_instructions=char_data.get('post_history_instructions', ''),
+            alternate_greetings=set(char_data.get('alternate_greetings', [])),
+            tags=set(char_data.get('tags', [])),
+            creator=char_data.get('creator', 'Anonymous'),
+            character_version=char_data.get('character_version', '1.0.0')
+        )
         
         # Handle extensions
-        extensions = char_data.get("extensions", {}) or {}  # Handle None case
+        extensions = char_data.get('extensions', {})
         instance._extensions = {
             k: v for k, v in extensions.items() 
-            if k != "charactergen"
+            if k != 'charactergen'
         }
         
         # Handle CharacterGen metadata
-        charactergen_data = extensions.get("charactergen", {})
-        if charactergen_data is not None:
-            instance._charactergen_metadata = CharacterGenMetadata.from_dict(charactergen_data)
+        charactergen_data = extensions.get('charactergen', {})
+        if charactergen_data:
+            instance._charactergen_metadata = CharacterMetadata.from_dict(charactergen_data)
         
         return instance
     
     @classmethod
     def create_empty(cls) -> 'CharacterData':
-        """Create a new empty character with default values"""
-        return cls(
-            _charactergen_metadata=CharacterGenMetadata()
-        )
+        """Create a new empty character with default values."""
+        return cls(_charactergen_metadata=CharacterMetadata())
 
     def record_change(self,
                      change_type: ChangeType,
                      fields: List[str],
                      description: str,
-                     metadata: Dict[str, Any] = None) -> VersionChange:
-        """Record a change to the character"""
-        change = self._charactergen_metadata.version_history.add_change(
+                     metadata: Optional[JsonDict] = None) -> Result[VersionChange]:
+        """Record a change to the character."""
+        result = self._charactergen_metadata.version_history.add_change(
             change_type=change_type,
             fields=fields,
             description=description,
             metadata=metadata
         )
-        self.modified_at = datetime.now()
-        return change
+        
+        if result.success:
+            self.modified_at = Timestamp.now()
+            
+        return result
     
     def get_field_history(self, field_name: str) -> List[VersionChange]:
-        """Get version history for a field"""
+        """Get version history for a field."""
         return self._charactergen_metadata.version_history.get_field_history(field_name)
     
     def get_current_version(self) -> int:
-        """Get current version number"""
+        """Get current version number."""
         return self._charactergen_metadata.version_history.current_version
-
-@dataclass
-class FieldValidationState:
-    """Validation state for a single field"""
-    is_valid: bool = True
-    message: str = ""
-    last_validated: Optional[datetime] = None
-
