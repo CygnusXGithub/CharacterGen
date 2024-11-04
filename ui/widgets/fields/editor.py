@@ -38,69 +38,58 @@ class FieldEditor(BaseWidget):
         
 
     def _setup_ui(self):
-        """Setup editor UI"""
+        """Setup editor UI with proper parenting"""
         self._layout.setContentsMargins(8, 8, 8, 8)
         self._layout.setSpacing(4)
         
-        # Header with actions
-        header = QHBoxLayout()
+        # Header with actions (proper parenting)
+        header_widget = QWidget(self)
+        header = QHBoxLayout(header_widget)
         header.setContentsMargins(0, 0, 0, 0)
         
         # Field settings button
-        settings_btn = QPushButton("⚙")
+        settings_btn = QPushButton("⚙", header_widget)
         settings_btn.setObjectName("settings_button")
         settings_btn.setToolTip("Field Settings")
         settings_btn.clicked.connect(self._show_settings)
         header.addWidget(settings_btn)
         
-        # Spacer
         header.addStretch()
         
         # Generate button
-        self._generate_btn = QPushButton("Generate")
+        self._generate_btn = QPushButton("Generate", header_widget)
         self._generate_btn.setObjectName("generate_button")
         self._generate_btn.clicked.connect(
             lambda: self.generate_requested.emit(self.field_name)
         )
         header.addWidget(self._generate_btn)
         
-        self._layout.addLayout(header)
+        self._layout.addWidget(header_widget)
         
         # Main field
         self._field = StandardField(
             ui_manager=self.ui_manager,
             field_name=self.field_name,
-            label=self.label,
-            help_text=self.help_text,
-            multiline=self.multiline,
-            required=self.required
+            parent=self  # Set proper parent
         )
-        # Connect field signals
-        self._field.content_changed.connect(self._on_content_changed)
-        self._field.validation_changed.connect(self._on_validation_changed)
         self._layout.addWidget(self._field)
         
-        # Status bar setup
-        self._status_frame = QFrame(self) 
+        # Status bar
+        self._status_frame = QFrame(self)
         self._status_frame.setObjectName("status_bar")
-        status_layout = QHBoxLayout() 
+        status_layout = QHBoxLayout(self._status_frame)
         status_layout.setContentsMargins(4, 2, 4, 2)
-        self._status_frame.setLayout(status_layout)
         
-        self._status_label = QLabel("No changes")
-        self._status_label.setObjectName("status_label")
+        self._status_label = QLabel("No changes", self._status_frame)
         status_layout.addWidget(self._status_label)
         
-        self._save_btn = QPushButton("Save", self._status_frame)  # Explicitly set parent
-        print(f"Save button created with parent: {self._save_btn.parent()}")
+        self._save_btn = QPushButton("Save", self._status_frame)
         self._save_btn.setObjectName("save_button")
         self._save_btn.clicked.connect(self._handle_save)
         self._save_btn.setVisible(False)
         status_layout.addWidget(self._save_btn)
         
         self._layout.addWidget(self._status_frame)
-        
-        self._setup_styling()
 
     def _setup_styling(self):
         """Setup editor styling"""

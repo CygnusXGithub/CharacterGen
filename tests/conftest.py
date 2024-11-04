@@ -1,3 +1,4 @@
+import asyncio
 import pytest
 from typing import Tuple, Dict, Any
 from PyQt6.QtWidgets import QApplication
@@ -140,3 +141,25 @@ def test_image_with_data(tmp_path) -> Tuple[Path, Dict[str, Any]]:
     img.save(image_path, "PNG", pnginfo=metadata)
     
     return image_path, char_data
+
+@pytest.fixture(scope="function")
+async def event_loop():
+    """Create a function-scoped event loop"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    yield loop
+    loop.close()
+
+@pytest.fixture
+async def initialized_widget(qtbot, ui_manager):
+    """Base fixture for widget testing"""
+    widget = None
+    try:
+        widget = yield
+        if widget:
+            qtbot.addWidget(widget)
+            widget.show()
+            await qtbot.waitExposed(widget)
+    finally:
+        if widget:
+            widget.close()

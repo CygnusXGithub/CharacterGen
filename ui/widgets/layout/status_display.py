@@ -35,41 +35,25 @@ class StatusDisplay(BaseWidget):
     message_hidden = pyqtSignal(str)  # Emitted when message is hidden (message_id)
     
     def __init__(self, 
-             ui_manager: UIStateManager, 
-             parent: Optional[QWidget] = None,
-             max_messages: int = 3): 
-        super().__init__(parent)
-        self.ui_manager = ui_manager
+                ui_manager: UIStateManager, 
+                parent: Optional[QWidget] = None,
+                max_messages: int = 3): 
+        super().__init__(ui_manager, parent)
         self.max_messages = max_messages
-        
-        # Create main layout first
-        self._main_layout = QVBoxLayout(self)
-        self._main_layout.setContentsMargins(0, 0, 0, 0)
-        self._main_layout.setSpacing(0)
-        
-        # Create the message layout
-        self._message_layout = QVBoxLayout()
-        self._message_layout.setContentsMargins(8, 8, 8, 8)
-        self._message_layout.setSpacing(4)
-        self._main_layout.addLayout(self._message_layout)
-        
-        # Initialize other properties
-        self._active_messages: Dict[str, StatusMessage] = {}
-        self._message_timers: Dict[str, QTimer] = {}
-        self._message_widgets: Dict[str, QFrame] = {}
-        
-        
-        self.setVisible(True)
 
     def _setup_ui(self):
         """Setup status display UI"""
-        self._layout = QVBoxLayout(self)
+        # Use self._layout from BaseWidget
         self._layout.setContentsMargins(0, 0, 0, 0)
-        self._layout.setSpacing(4)
-        self._layout.addStretch()  # Push messages to bottom
+        self._layout.setSpacing(0)
+
+        # Create message layout
+        self._message_layout = QVBoxLayout()
+        self._message_layout.setContentsMargins(8, 8, 8, 8)
+        self._message_layout.setSpacing(4)
         
-        self.setMinimumWidth(300)
-        self._setup_styling()
+        # Add to parent layout
+        self._layout.addLayout(self._message_layout)
 
     def _setup_styling(self):
         """Setup widget styling"""
@@ -208,43 +192,33 @@ class StatusDisplay(BaseWidget):
             self.hide_message(message_id)
 
     def _create_message_widget(self, message: StatusMessage):
-        """Create widget for message"""
-        # Create frame
+        """Create widget for message with proper parenting"""
+        # Create frame with proper parent
         frame = QFrame(self)
         frame.setObjectName(f"message_frame_{message.id}")
-        frame.setProperty("class", "status_message")
-        frame.setProperty("level", message.level.name.lower())
         
-        # Layout
-        layout = QHBoxLayout(frame)
+        # Layout for frame
+        layout = QHBoxLayout(frame)  # Set parent directly in constructor
         layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(8)
         
-        # Message text
-        text_label = QLabel(message.text)
+        # Message text label with proper parent
+        text_label = QLabel(message.text, frame)  # Set parent
         text_label.setObjectName("message_text")
         text_label.setWordWrap(True)
         layout.addWidget(text_label)
         
         # Close button for persistent messages
         if message.duration == 0:
-            close_button = QPushButton("×")
+            close_button = QPushButton("×", frame)  # Set parent
             close_button.setObjectName("close_button")
-            close_button.setProperty("class", "close_button")
             close_button.clicked.connect(lambda: self.hide_message(message.id))
-            close_button.setCursor(Qt.CursorShape.PointingHandCursor)
             layout.addWidget(close_button)
         
-        # Add to layout before stretch
-        insert_pos = self._layout.count() - 1 if self._layout.count() > 0 else 0
-        self._layout.insertWidget(insert_pos, frame)
-        frame.setVisible(True)  # Explicitly set frame visibility
+        # Add to layout with proper index
+        insert_pos = self._message_layout.count()
+        self._message_layout.insertWidget(insert_pos, frame)
         self._message_widgets[message.id] = frame
-        
-        # Force layout update
-        self._layout.activate()
-        frame.show()  # Ensure frame is shown
-        self.update()  # Update the display
 
     def update_message(self,
                       message_id: str,

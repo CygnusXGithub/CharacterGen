@@ -1,7 +1,7 @@
 from typing import Optional, Dict, Any
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QMenuBar, QMenu, QToolBar, QStatusBar
+    QMenuBar, QMenu, QToolBar, QStatusBar, QSplitter
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction
@@ -14,6 +14,8 @@ from core.state import (
 from core.models.ui import TabType, StatusLevel
 from ..widgets.layout.tab_container import TabContainer
 from ..widgets.layout.status_display import StatusDisplay
+from ..widgets.fields.editor import FieldEditor
+from ..widgets.image import ImageWidget
 
 class MainWindow(QMainWindow):
     """Main application window"""
@@ -40,25 +42,24 @@ class MainWindow(QMainWindow):
         self._connect_signals()
 
     def _setup_ui(self):
-        """Setup main UI layout"""
-        # Central widget
-        central_widget = QWidget()
+        """Setup main UI layout with proper parenting"""
+        central_widget = QWidget(self)
         self.setCentralWidget(central_widget)
         
-        # Main layout
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
         
-        # Tab container
-        self._tab_container = TabContainer(self.ui_manager)
-        main_layout.addWidget(self._tab_container)
+        # Main content splitter with proper parent
+        splitter = QSplitter(Qt.Orientation.Horizontal, central_widget)
         
-        # Setup tabs
-        self._setup_tabs()
+        # Tab container with proper parent
+        self._tab_container = TabContainer(self.ui_manager, splitter)
+        splitter.addWidget(self._tab_container)
         
-        # Status display
-        self._status_display = StatusDisplay(self.ui_manager)
+        main_layout.addWidget(splitter)
+        
+        # Status display with proper parent
+        self._status_display = StatusDisplay(self.ui_manager, central_widget)
         main_layout.addWidget(self._status_display)
 
     def _setup_menubar(self):
@@ -218,6 +219,17 @@ class MainWindow(QMainWindow):
     # Signal handlers
     def _update_status(self, message: str, level: StatusLevel):
         """Update status bar message"""
+        # Original incorrect implementation:
+        # self._status_label.showMessage(message)  # Missing level parameter
+
+        # Corrected implementation:
+        if level == StatusLevel.ERROR:
+            self._status_label.setStyleSheet("color: red")
+        elif level == StatusLevel.WARNING:
+            self._status_label.setStyleSheet("color: orange")
+        else:
+            self._status_label.setStyleSheet("color: black")
+            
         self._status_label.showMessage(message)
 
     def _show_dialog(self, dialog_info):

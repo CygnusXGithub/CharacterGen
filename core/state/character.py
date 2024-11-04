@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Set, List
+from typing import Dict, Optional, Set, List, Any
 from datetime import datetime
 import asyncio
 from uuid import UUID
@@ -117,6 +117,21 @@ class CharacterStateManager(StateManagerBase):
                 context={'operation': 'update_field', 'field': field_name}
             )
             return False
+
+    def handle_metadata_change(self, key: str, value: Any):
+        """Handle metadata state changes"""
+        try:
+            if key == 'generation_completed':
+                self._handle_generation_metadata(value)
+            elif key == 'field_modified':
+                self._handle_field_metadata(value)
+        except Exception as e:
+            self.error_handler.handle_error(
+                error=e,
+                category=ErrorCategory.STATE,
+                level=ErrorLevel.ERROR,
+                context={'operation': 'handle_metadata_change'}
+            )
 
     async def save_character(self, auto_save: bool = False) -> bool:
         """Save current character"""

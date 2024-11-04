@@ -35,7 +35,7 @@ class BaseWidget(QWidget):
         pass
 
     def _setup_styling(self):
-        """Setup widget styling"""
+        """Setup widget styling - override in subclasses"""
         self.setObjectName(self.__class__.__name__)
 
     def update_state(self, key: str, value: Any):
@@ -78,33 +78,26 @@ class BaseWidget(QWidget):
 class ContentEditWidget(BaseWidget):
     """Base class for content-editable widgets"""
     
-    content_changed = pyqtSignal(str)
-    focus_changed = pyqtSignal(bool)
-    validation_changed = pyqtSignal(bool, str)
+    state_changed = pyqtSignal(str, object)  # Signal for state changes
+    error_occurred = pyqtSignal(str, str)
 
     def __init__(self, 
                  ui_manager: UIStateManager,
-                 field_name: Optional[str] = None,
                  parent: Optional[QWidget] = None):
-        self.field_name = field_name
-        super().__init__(ui_manager, parent)
+        """Initialize base widget"""
+        super().__init__(parent)
+        self.ui_manager = ui_manager
         
-        self._is_valid = True
-        self._validation_message = ""
-        self._is_modified = False
+        # Initialize layout BEFORE _setup_ui
+        self._layout = QVBoxLayout()
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(0)
+        self.setLayout(self._layout)  # Set layout immediately
         
-        # Setup content frame
-        self._content_frame = QFrame(self)
-        self._content_frame.setFrameShape(QFrame.Shape.StyledPanel)
-        self._content_frame.setFrameShadow(QFrame.Shadow.Raised)
-        self._layout.addWidget(self._content_frame)
-        
-        # Content layout
-        self._content_layout = QVBoxLayout(self._content_frame)
-        self._content_layout.setContentsMargins(8, 8, 8, 8)
-        self._content_layout.setSpacing(4)
-        
-        self._setup_content_ui()
+        # Setup widget AFTER layout is initialized
+        self._setup_ui()
+        self._connect_signals()
+        self._setup_styling()
 
     def _setup_content_ui(self):
         """Setup content editing UI - override in subclasses"""

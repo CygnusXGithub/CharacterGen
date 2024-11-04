@@ -9,6 +9,7 @@ from .prompt import PromptManager
 from .dependency import DependencyManager
 from ..errors import ErrorHandler, ErrorCategory, ErrorLevel
 from ..models.batch import BatchOperation, BatchStatus, BatchProgress
+from PyQt6.QtCore import pyqtSignal, QObject
 
 @dataclass
 class QueuedGeneration:
@@ -20,19 +21,25 @@ class QueuedGeneration:
     priority: int = 0
     queued_at: datetime = field(default_factory=datetime.now)
 
-class GenerationQueueManager:
+class GenerationQueueManager(QObject):
     """Manages generation requests with dependencies and priorities"""
-    
+        
+    # Add signals
+    generation_completed = pyqtSignal(UUID, str)  # request_id, result
+    generation_failed = pyqtSignal(UUID, str)     # request_id, error
+    generation_started = pyqtSignal(UUID)         # request_id
+
     def __init__(self, 
                  prompt_manager: PromptManager,
                  dependency_manager: DependencyManager,
                  error_handler: ErrorHandler,
                  max_concurrent: int = 3):
+        super().__init__()  # Call QObject's init first
         self.prompt_manager = prompt_manager
         self.dependency_manager = dependency_manager
         self.error_handler = error_handler
         self.max_concurrent = max_concurrent
-        
+
         # Queue storage
         self._queued: Dict[UUID, QueuedGeneration] = {}
         self._active: Dict[UUID, QueuedGeneration] = {}

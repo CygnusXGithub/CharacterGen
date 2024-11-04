@@ -1,7 +1,7 @@
 from typing import Optional
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QTextEdit, 
-    QPlainTextEdit, QLabel
+    QPlainTextEdit, QLabel, QFrame
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFocusEvent, QFont
@@ -11,13 +11,8 @@ from .validation import ValidationDisplay, ValidationSeverity
 from core.state import UIStateManager
 
 class EditableContentWidget(ContentEditWidget):
-    """Concrete implementation of ContentEditWidget with text editing capabilities"""
-    
-    def __init__(self, 
-                 ui_manager: UIStateManager,
-                 field_name: Optional[str] = None,
-                 parent: Optional[QWidget] = None,
-                 multiline: bool = True,
+    def __init__(self, ui_manager: UIStateManager, field_name: Optional[str] = None,
+                 parent: Optional[QWidget] = None, multiline: bool = True,
                  placeholder_text: str = ""):
         self.multiline = multiline
         self.placeholder_text = placeholder_text
@@ -28,54 +23,36 @@ class EditableContentWidget(ContentEditWidget):
         self._is_editing = False
 
     def _setup_content_ui(self):
-        """Setup the content editing UI"""
-        # Add label if field has name
+        """Setup content editing UI with proper parenting"""
+        # Create content frame with proper parent
+        self._content_frame = QFrame(self)
+        self._content_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        self._content_frame.setFrameShadow(QFrame.Shadow.Raised)
+        self._layout.addWidget(self._content_frame)
+        
+        # Content layout
+        self._layout.setContentsMargins(8, 8, 8, 8)
+        self._layout.setSpacing(4)
+        
         if self.field_name:
-            self._label = QLabel(self.field_name.replace('_', ' ').title())
+            self._label = QLabel(self.field_name.replace('_', ' ').title(), self._content_frame)
             self._label.setObjectName("field_label")
-            self._content_layout.addWidget(self._label)
+            self._layout.addWidget(self._label)
         
-        # Create appropriate editor
+        # Create editor with proper parent
         if self.multiline:
-            self._editor = QTextEdit(self)
+            self._editor = QTextEdit(self._content_frame)
             self._editor.setAcceptRichText(False)
-            self._editor.setTabChangesFocus(True)
-            self._editor.setMinimumHeight(100)
         else:
-            self._editor = QPlainTextEdit(self)
-            self._editor.setMaximumHeight(30)
-            self._editor.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-            self._editor.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-            self._editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+            self._editor = QPlainTextEdit(self._content_frame)
         
-        # Setup editor
         self._editor.setObjectName("content_editor")
         self._editor.setPlaceholderText(self.placeholder_text)
-        self._content_layout.addWidget(self._editor)
+        self._layout.addWidget(self._editor)
         
-        # Add validation display with proper layout handling
-        self._validation_display = ValidationDisplay(self)
-        self._content_layout.addWidget(self._validation_display)
-        self._validation_display.hide()  # Start hidden
-        
-        # Ensure proper sizing
-        self.setMinimumHeight(100)
-        self.adjustSize()
-        
-        # Connect signals
-        self._editor.textChanged.connect(self._handle_text_changed)
-        # Connect focus events directly to the editor's events
-        self._editor.focusInEvent = self._handle_focus_in
-        self._editor.focusOutEvent = self._handle_focus_out
-        
-        # Make editor focusable
-        self._editor.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-
-        # Setup styling
-        self._setup_editor_styling()
-
-        # Update validation display initial state
-        self._validation_display.hide()
+        # Validation display with proper parent
+        self._validation_display = ValidationDisplay(self._content_frame)
+        self._layout.addWidget(self._validation_display)
 
     def focusInEvent(self, event: QFocusEvent):
         """Override focus in event"""

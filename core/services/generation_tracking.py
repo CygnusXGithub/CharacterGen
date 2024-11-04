@@ -12,12 +12,12 @@ from ..errors import ErrorHandler, StateError, ErrorCategory, ErrorLevel
 class GenerationTrackingService:
     """Service for tracking generation requests and results"""
 
-    def __init__(self, error_handler: ErrorHandler):
+    def __init__(self, error_handler: ErrorHandler, max_concurrent: int = 3):
         self.error_handler = error_handler
         self.logger = logging.getLogger(__name__)
         self._queue = GenerationQueue()
         self._lock = asyncio.Lock()
-        self._max_concurrent = 3
+        self._max_concurrent = max_concurrent
         self._current_generations = 0
 
     def _reset_state(self):

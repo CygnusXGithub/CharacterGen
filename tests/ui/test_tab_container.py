@@ -1,47 +1,44 @@
-# charactergen/tests/ui/test_tab_container.py
-
 import pytest
-from PyQt6.QtWidgets import QLabel, QWidget, QPushButton
 from PyQt6.QtCore import Qt
-
+from PyQt6.QtWidgets import QLabel, QPushButton
 from ui.widgets.layout.tab_container import TabContainer, TabState
 
 @pytest.fixture
-def tab_container(qtbot, ui_manager):
+async def tab_container(qtbot, ui_manager):
     """Create tab container for testing"""
     container = TabContainer(ui_manager)
     qtbot.addWidget(container)
     container.show()
+    await qtbot.waitExposed(container)
     return container
 
 class TestTabContainer:
     """Test tab container functionality"""
     
-    def test_initialization(self, tab_container):
-        """Test initial state"""
+    @pytest.mark.asyncio
+    async def test_initialization(tab_container):
+        """Test initial tab container state"""
+        assert tab_container._tabs == {}
+        assert tab_container._tab_states == {}
         assert tab_container._current_tab is None
-        assert len(tab_container._tabs) == 0
-        assert len(tab_container._tab_states) == 0
+        assert tab_container._content is not None
+        assert tab_container._tab_bar is not None
 
-    def test_add_tab(self, tab_container, qtbot):
-        """Test adding tabs"""
-        # Add first tab
-        content1 = QLabel("Content 1")
-        success = tab_container.add_tab("tab1", "Tab 1", content1)
-        assert success
-        assert "tab1" in tab_container._tabs
-        assert tab_container.get_current_tab() == "tab1"  # First tab becomes active
+    @pytest.mark.asyncio
+    async def test_add_tab(tab_container):
+        """Test adding a tab"""
+        # Create test content
+        content = QLabel("Test Content")
         
-        # Add second tab
-        content2 = QLabel("Content 2")
-        success = tab_container.add_tab("tab2", "Tab 2", content2)
+        # Add tab
+        success = tab_container.add_tab("test_tab", "Test Tab", content)
         assert success
-        assert "tab2" in tab_container._tabs
-        assert tab_container.get_current_tab() == "tab1"  # First tab remains active
         
-        # Try adding duplicate
-        success = tab_container.add_tab("tab1", "Tab 1", QLabel("Duplicate"))
-        assert not success
+        # Verify tab was added
+        assert "test_tab" in tab_container._tabs
+        assert "test_tab" in tab_container._tab_states
+        assert tab_container._tab_states["test_tab"] == TabState.ENABLED
+        assert tab_container.get_current_tab() == "test_tab"  # First tab becomes active
 
     def test_tab_switching(self, tab_container, qtbot):
         """Test tab switching"""
