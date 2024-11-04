@@ -1,106 +1,161 @@
+# core/services/dependency.py
+"""Service for managing field dependencies and regeneration chains."""
+from dataclasses import dataclass, field
 from typing import Set, List, Dict, Optional
-from dataclasses import dataclass
-from ..models.prompts import PromptSet, PromptTemplate
+
+from ..common.types import (
+    BaseModel, JsonDict, Result
+)
 from ..errors import ErrorHandler, ErrorCategory, ErrorLevel
+from ..models.prompts import PromptSet, PromptTemplate
 
 @dataclass
-class RegenerationChain:
-    """Represents a chain of fields that need regeneration"""
-    root_field: str                  # Field that triggered regeneration
-    dependent_fields: List[str]      # Fields that need regeneration in order
-    changed_fields: Set[str]         # Fields that changed to trigger this
-    reason: Dict[str, Set[str]]      # Field -> set of fields it depends on that changed
+class RegenerationChain(BaseModel):
+    """Represents a chain of fields that need regeneration."""
+    root_field: str
+    dependent_fields: List[str]
+    changed_fields: Set[str]
+    reason: Dict[str, Set[str]]  # Field -> set of fields it depends on that changed
+    metadata: JsonDict = field(default_factory=dict)
+    
+    def to_dict(self) -> JsonDict:
+        """Convert chain to dictionary format."""
+        data = super().to_dict()
+        data.update({
+            'root_field': self.root_field,
+            'dependent_fields': self.dependent_fields,
+            'changed_fields': list(self.changed_fields),
+            'reason': {k: list(v) for k, v in self.reason.items()},
+            'metadata': self.metadata
+        })
+        return data
+
+@dataclass
+class DependencyContext(BaseModel):
+    """Context for dependency operations."""
+    prompt_set: PromptSet
+    field_name: str
+    changed_fields: Set[str]
+    metadata: JsonDict = field(default_factory=dict)
 
 class DependencyManager:
-    """Manages field dependencies and regeneration chains"""
+    """Manages field dependencies and regeneration chains."""
     
     def __init__(self, error_handler: ErrorHandler):
         self.error_handler = error_handler
         
     def get_field_dependencies(self, 
                              field: str, 
-                             prompt_set: PromptSet) -> Set[str]:
-        """Get all fields this field depends on"""
+                             prompt_set: PromptSet) -> Result[Set[str]]:
+        """Get all fields this field depends on."""
         try:
             prompt = prompt_set.get_prompt_for_field(field)
             if not prompt:
-                return set()
+                return Result(True, "No dependencies found", set())
                 
-            return prompt.required_fields | prompt.optional_fields
+            dependencies = prompt.required_fields | prompt.optional_fields
+            return Result(True, "Dependencies retrieved successfully", dependencies)
             
         except Exception as e:
             self.error_handler.handle_error(
-                error=e,
-                category=ErrorCategory.STATE,
-                level=ErrorLevel.ERROR,
-                context={'operation': 'get_dependencies', 'field': field}
+                e,
+                ErrorCategory.STATE,
+                ErrorLevel.ERROR,
+                {'operation': 'get_dependencies', 'field': field}
             )
-            return set()
+            return Result(False, f"Failed to get dependencies: {str(e)}", error=e)
             
     def get_dependent_fields(self, 
                            field: str, 
-                           prompt_set: PromptSet) -> Set[str]:
-        """Get all fields that depend on this field"""
-        dependent_fields = set()
-        
-        for other_field in prompt_set.generation_order:
-            if field == other_field:
-                continue
+                           prompt_set: PromptSet) -> Result[Set[str]]:
+        """Get all fields that depend on this field."""
+        try:
+            dependent_fields = set()
             
-            dependencies = self.get_field_dependencies(other_field, prompt_set)
-            if field in dependencies:
-                dependent_fields.add(other_field)
+            for other_field in prompt_set.generation_order:
+                if field == other_field:
+                    continue
                 
-        return dependent_fields
+                dependencies_result = self.get_field_dependencies(other_field, prompt_set)
+                if not dependencies_result.success:
+                    return dependencies_result
+                    
+                if field in dependencies_result.data:
+                    dependent_fields.add(other_field)
+                    
+            return Result(True, "Dependent fields retrieved successfully", dependent_fields)
+            
+        except Exception as e:
+            self.error_handler.handle_error(
+                e,
+                ErrorCategory.STATE,
+                ErrorLevel.ERROR,
+                {'operation': 'get_dependent_fields', 'field': field}
+            )
+            return Result(False, f"Failed to get dependent fields: {str(e)}", error=e)
         
     def create_regeneration_chain(self,
-                                field: str,
-                                changed_fields: Set[str],
-                                prompt_set: PromptSet) -> RegenerationChain:
-        """Create a regeneration chain starting from field"""
+                                context: DependencyContext) -> Result[RegenerationChain]:
+        """Create a regeneration chain starting from field."""
         try:
             chain = []
             reason = {}
             chain_fields = set()  # Track fields in chain for dependency checking
             
             # Add root field
-            chain.append(field)
-            chain_fields.add(field)
+            chain.append(context.field_name)
+            chain_fields.add(context.field_name)
             
             # Check subsequent fields in generation order
-            generation_order = prompt_set.generation_order
-            start_idx = generation_order.index(field)
+            generation_order = context.prompt_set.generation_order
+            start_idx = generation_order.index(context.field_name)
             
             # Look at fields that come after the root
             for current_field in generation_order[start_idx + 1:]:
-                dependencies = self.get_field_dependencies(current_field, prompt_set)
+                deps_result = self.get_field_dependencies(
+                    current_field, 
+                    context.prompt_set
+                )
+                if not deps_result.success:
+                    return Result(False, 
+                                f"Failed to get dependencies for {current_field}",
+                                error=deps_result.error)
+                
                 # If this field depends on any field already in our chain
-                affected_deps = dependencies & chain_fields
+                affected_deps = deps_result.data & chain_fields
                 if affected_deps:
                     chain.append(current_field)
                     chain_fields.add(current_field)
                     reason[current_field] = affected_deps
             
-            return RegenerationChain(
-                root_field=field,
+            chain_obj = RegenerationChain(
+                root_field=context.field_name,
                 dependent_fields=chain,
-                changed_fields=changed_fields,
-                reason=reason
+                changed_fields=context.changed_fields,
+                reason=reason,
+                metadata=context.metadata
             )
+            
+            # Validate the chain
+            validation = self.validate_regeneration_order(chain_obj, context.prompt_set)
+            if not validation.success:
+                return validation
+            
+            return Result(True, "Regeneration chain created successfully", chain_obj)
             
         except Exception as e:
             self.error_handler.handle_error(
-                error=e,
-                category=ErrorCategory.STATE,
-                level=ErrorLevel.ERROR,
-                context={'operation': 'create_chain', 'field': field}
+                e,
+                ErrorCategory.STATE,
+                ErrorLevel.ERROR,
+                {'operation': 'create_chain', 'field': context.field_name}
             )
-            raise
+            return Result(False, f"Failed to create regeneration chain: {str(e)}", error=e)
             
     def validate_regeneration_order(self,
                                   chain: RegenerationChain,
-                                  prompt_set: PromptSet) -> bool:
-        """Validate that regeneration order respects dependencies"""
+                                  prompt_set: PromptSet) -> Result:
+        """Validate that regeneration order respects dependencies."""
         try:
             generation_order = {
                 field: idx 
@@ -109,7 +164,11 @@ class DependencyManager:
             
             # Check each field comes after its dependencies
             for i, field in enumerate(chain.dependent_fields):
-                field_deps = self.get_field_dependencies(field, prompt_set)
+                deps_result = self.get_field_dependencies(field, prompt_set)
+                if not deps_result.success:
+                    return deps_result
+                
+                field_deps = deps_result.data
                 field_pos = generation_order[field]
                 
                 # Check dependencies either:
@@ -119,15 +178,53 @@ class DependencyManager:
                     if dep in chain.dependent_fields:
                         dep_idx = chain.dependent_fields.index(dep)
                         if dep_idx >= i:  # Dependency should come before
-                            return False
+                            return Result(
+                                False,
+                                f"Invalid regeneration order: {dep} must come before {field}"
+                            )
                             
-            return True
+            return Result(True, "Regeneration order validation successful")
             
         except Exception as e:
             self.error_handler.handle_error(
-                error=e,
-                category=ErrorCategory.STATE,
-                level=ErrorLevel.ERROR,
-                context={'operation': 'validate_order', 'chain': chain.dependent_fields}
+                e,
+                ErrorCategory.STATE,
+                ErrorLevel.ERROR,
+                {'operation': 'validate_order', 'chain': chain.dependent_fields}
             )
-            return False
+            return Result(False, f"Failed to validate regeneration order: {str(e)}", error=e)
+
+    def analyze_field_impacts(self,
+                            field: str,
+                            prompt_set: PromptSet) -> Result[Dict[str, Set[str]]]:
+        """Analyze how changes to a field impact other fields."""
+        try:
+            impacts = {}
+            
+            # Get direct dependents
+            dependents_result = self.get_dependent_fields(field, prompt_set)
+            if not dependents_result.success:
+                return dependents_result
+                
+            # For each dependent field, analyze its chain
+            for dependent in dependents_result.data:
+                context = DependencyContext(
+                    prompt_set=prompt_set,
+                    field_name=dependent,
+                    changed_fields={field}
+                )
+                
+                chain_result = self.create_regeneration_chain(context)
+                if chain_result.success:
+                    impacts[dependent] = chain_result.data.reason.get(dependent, set())
+            
+            return Result(True, "Field impacts analyzed successfully", impacts)
+            
+        except Exception as e:
+            self.error_handler.handle_error(
+                e,
+                ErrorCategory.STATE,
+                ErrorLevel.ERROR,
+                {'operation': 'analyze_impacts', 'field': field}
+            )
+            return Result(False, f"Failed to analyze field impacts: {str(e)}", error=e)

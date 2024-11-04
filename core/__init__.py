@@ -4,7 +4,7 @@ from pathlib import Path
 
 # Version information
 __version__ = '0.1.0'
-__author__ = 'Your Name'
+__author__ = 'Cygnus'
 __license__ = 'MIT'
 
 # Core components
@@ -12,6 +12,7 @@ from .models import *
 from .services import *
 from .state import *
 from .errors import *
+
 
 # Type aliases for better type hinting
 ConfigDict = Dict[str, Any]
