@@ -1,5 +1,5 @@
 """Error handling module initialization."""
-from typing import Dict, Any, Type
+from typing import Dict, Any, Optional, Type
 
 from .handler import ErrorHandler, ErrorCategory, ErrorLevel, ErrorInfo
 from .types import (
@@ -41,3 +41,29 @@ __all__ = [
     'get_error_class',
     'ERROR_REGISTRY'
 ]
+
+def get_error_category(error: Exception) -> ErrorCategory:
+    """Get appropriate error category for exception type"""
+    error_type = error.__class__.__name__
+    if error_type in ERROR_REGISTRY:
+        return ERROR_REGISTRY[error_type].default_category
+    return ErrorCategory.STATE  # Default category
+
+def get_error_level(error: Exception) -> ErrorLevel:
+    """Get appropriate error level for exception type"""
+    error_type = error.__class__.__name__
+    if error_type in ERROR_REGISTRY:
+        return ERROR_REGISTRY[error_type].default_level
+    return ErrorLevel.ERROR  # Default level
+
+# Add utility method for common error creation
+def create_error(message: str, 
+                category: ErrorCategory,
+                details: Optional[Dict[str, Any]] = None) -> CharacterGenError:
+    """Create appropriate error type based on category"""
+    error_class = next(
+        (err for err in ERROR_REGISTRY.values() 
+         if err.default_category == category),
+        CharacterGenError
+    )
+    return error_class(message, details or {})

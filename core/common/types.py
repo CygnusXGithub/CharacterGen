@@ -1,10 +1,14 @@
-# core/common/types.py
 """Base types and enums for the entire application."""
 from enum import Enum, auto
-from typing import NewType, Dict, Any, Union, TypeVar, Optional
+from typing import (
+    NewType, Dict, Any, Union, TypeVar, Optional, 
+    Generic, List, Type, Callable
+)
 from pathlib import Path
 from datetime import datetime
 from uuid import UUID
+from dataclasses import dataclass, field
+import asyncio
 
 # Base Type Aliases
 JsonDict = Dict[str, Any]
@@ -95,9 +99,6 @@ class DialogType(Enum):
     CONFIRMATION = auto()
     ERROR = auto()
 
-# Base dataclass for all models
-from dataclasses import dataclass, field
-
 @dataclass
 class BaseModel:
     """Base model with common attributes."""
@@ -122,11 +123,133 @@ class BaseModel:
             modified_at=datetime.fromisoformat(data['modified_at'])
         )
 
-# Result types for operations
 @dataclass
-class Result:
+class Result(Generic[T]):
     """Generic result type for operations."""
     success: bool
     message: str
-    data: Optional[Any] = None
+    data: Optional[T] = None
     error: Optional[Exception] = None
+    metadata: JsonDict = field(default_factory=dict)
+
+    @classmethod
+    def from_error(cls, error: Exception, context: Optional[Dict] = None) -> 'Result[T]':
+        """Create Result from exception with optional context."""
+        return cls(
+            success=False,
+            message=str(error),
+            error=error,
+            metadata=context or {}
+        )
+
+    @classmethod
+    def success(cls, message: str = "Operation successful", data: Optional[T] = None) -> 'Result[T]':
+        """Create successful Result."""
+        return cls(True, message, data)
+
+    @classmethod
+    def failure(cls, message: str, error: Optional[Exception] = None) -> 'Result[T]':
+        """Create failure Result."""
+        return cls(False, message, error=error)
+
+    def ensure_type(self, expected_type: Type[T]) -> 'Result[T]':
+        """Ensure Result data is of expected type."""
+        if not self.success or self.data is None:
+            return self
+        if not isinstance(self.data, expected_type):
+            return Result(False, f"Expected {expected_type.__name__}, got {type(self.data).__name__}")
+        return self
+
+    async def ensure_success(self) -> 'Result[T]':
+        """Raise exception if Result is failure, otherwise return self."""
+        if not self.success:
+            if self.error:
+                raise self.error
+            raise RuntimeError(self.message)
+        return self
+
+    def map(self, func: Callable[[T], Any]) -> 'Result[Any]':
+        """Map successful Result data through function."""
+        if not self.success or self.data is None:
+            return self
+        try:
+            return Result(
+                True,
+                self.message,
+                func(self.data),
+                metadata=self.metadata
+            )
+        except Exception as e:
+            return Result.from_error(e)
+
+    def bind(self, func: Callable[[T], 'Result[Any]']) -> 'Result[Any]':
+        """Chain Result operations."""
+        if not self.success or self.data is None:
+            return self
+        try:
+            return func(self.data)
+        except Exception as e:
+            return Result.from_error(e)
+
+@dataclass
+class AsyncLock:
+    """Named async lock with tracking."""
+    name: str
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    last_acquired: Optional[datetime] = None
+    last_released: Optional[datetime] = None
+    
+    async def acquire(self, timeout: float = 30.0) -> Result[bool]:
+        """Acquire lock with timeout."""
+        try:
+            async with asyncio.timeout(timeout):
+                await self.lock.acquire()
+                self.last_acquired = datetime.now()
+                return Result.success("Lock acquired", True)
+        except asyncio.TimeoutError:
+            return Result.failure(f"Lock acquisition timeout after {timeout}s")
+        except Exception as e:
+            return Result.from_error(e)
+    
+    def release(self) -> None:
+        """Release lock."""
+        self.lock.release()
+        self.last_released = datetime.now()
+
+@dataclass
+class OperationContext:
+    """Context for tracking operations."""
+    name: str
+    metadata: JsonDict = field(default_factory=dict)
+    start_time: datetime = field(default_factory=datetime.now)
+    complete_time: Optional[datetime] = None
+    error: Optional[Exception] = None
+    
+    @property
+    def duration_ms(self) -> Optional[float]:
+        """Get operation duration in milliseconds."""
+        if not self.complete_time:
+            return None
+        return (self.complete_time - self.start_time).total_seconds() * 1000
+    
+    def complete(self, error: Optional[Exception] = None) -> None:
+        """Mark operation as complete."""
+        self.complete_time = datetime.now()
+        self.error = error
+        self.metadata['duration_ms'] = self.duration_ms
+
+class DataValidationError(Exception):
+    """Raised when data validation fails."""
+    pass
+
+class ResourceNotFoundError(Exception):
+    """Raised when a required resource is not found."""
+    pass
+
+class OperationTimeoutError(Exception):
+    """Raised when an operation times out."""
+    pass
+
+class InvalidStateError(Exception):
+    """Raised when operation is invalid for current state."""
+    pass
