@@ -51,12 +51,14 @@ class DebugConfig:
 @dataclass
 class AppConfig:
     """Complete application configuration"""
-    version: str = "1.0.0"
+    # Required arguments first
     api: ApiConfig
     files: FileConfig
     ui: UIConfig
     generation: GenerationConfig
     debug: DebugConfig
+    # Optional arguments after
+    version: str = "1.0.0"
     last_modified: datetime = field(default_factory=datetime.now)
     
     @classmethod

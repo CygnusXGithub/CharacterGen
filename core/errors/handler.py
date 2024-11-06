@@ -8,7 +8,6 @@ import traceback
 import json
 from enum import Enum, auto
 from pathlib import Path
-from core.errors import get_error_category, get_error_level
 
 from .types import CharacterGenError
 from ..models.ui import StatusLevel

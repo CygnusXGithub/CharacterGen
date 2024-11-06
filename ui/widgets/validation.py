@@ -127,6 +127,7 @@ class ValidationDisplay(QFrame):
             """
         
         self.setStyleSheet(style)
+
 class DismissibleValidationDisplay(ValidationDisplay):
     """Validation display that can be dismissed"""
     

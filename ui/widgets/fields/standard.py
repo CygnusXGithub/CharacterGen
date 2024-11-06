@@ -257,3 +257,42 @@ class StandardField(EditableContentWidget):
     def is_valid(self) -> bool:
         """Check if field is valid"""
         return super().is_valid()
+
+    def handle_focus_in(self):
+        """Handle focus in event"""
+        super().handle_focus_in()
+        if self.required:
+            self.validate()
+
+    def handle_focus_out(self):
+        """Handle focus out event"""
+        super().handle_focus_out()
+        if self.required:
+            self.validate()
+
+    def handle_content_change(self):
+        """Handle content changes"""
+        super().handle_content_change()
+        if self.required:
+            self.validate()
+
+    def set_font_size(self, size: int):
+        """Set editor font size"""
+        font = self._editor.font()
+        font.setPointSize(size)
+        self._editor.setFont(font)
+
+    def set_max_height(self, height: int):
+        """Set maximum editor height"""
+        if self.multiline:
+            self._editor.setMaximumHeight(height)
+
+    def set_min_height(self, height: int):
+        """Set minimum editor height"""
+        if self.multiline:
+            self._editor.setMinimumHeight(height)
+
+    def set_tab_behavior(self, changes_focus: bool):
+        """Set whether tab changes focus or inserts tab"""
+        if isinstance(self._editor, QTextEdit):
+            self._editor.setTabChangesFocus(changes_focus)

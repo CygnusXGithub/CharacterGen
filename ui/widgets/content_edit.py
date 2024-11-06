@@ -1,10 +1,11 @@
-from typing import Optional
+from typing import Optional, Any, Dict
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QTextEdit, 
-    QPlainTextEdit, QLabel, QFrame
+    QWidget, QVBoxLayout, QHBoxLayout, 
+    QLabel, QPushButton, QFrame,
+    QSizePolicy, QTextEdit, QPlainTextEdit
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFocusEvent, QFont
+from PyQt6.QtGui import QFont, QFocusEvent
 
 from .base import ContentEditWidget
 from .validation import ValidationDisplay, ValidationSeverity

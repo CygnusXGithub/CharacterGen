@@ -1,22 +1,21 @@
-# core/models/versioning.py
-"""Version control and change tracking for models."""
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import List, Dict, Optional
 from datetime import datetime
 
 from ..common.types import (
-    BaseModel, ChangeType, JsonDict, 
-    ID, Timestamp, Result
+    BaseModel, JsonDict, ChangeType,
+    Result, Timestamp
 )
 
 @dataclass
 class VersionChange(BaseModel):
     """Represents a single change to a model."""
-    change_type: ChangeType
-    description: str
-    fields_changed: List[str]
-    metadata: JsonDict = field(default_factory=dict)
+    change_type: ChangeType = field()  # Make it non-default explicitly
+    description: str = field()
+    fields_changed: List[str] = field()
     parent_version: Optional[int] = None
+    metadata: JsonDict = field(default_factory=dict)
+    
     
     def to_dict(self) -> JsonDict:
         """Convert change to dictionary format."""

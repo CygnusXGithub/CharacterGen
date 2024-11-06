@@ -6,7 +6,7 @@ from typing import (
 )
 from pathlib import Path
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 from dataclasses import dataclass, field
 import asyncio
 
@@ -102,9 +102,13 @@ class DialogType(Enum):
 @dataclass
 class BaseModel:
     """Base model with common attributes."""
-    id: ID = field(default_factory=UUID)
-    created_at: Timestamp = field(default_factory=datetime.now)
-    modified_at: Timestamp = field(default_factory=datetime.now)
+    def __post_init__(self):
+        if not hasattr(self, 'id'):
+            self.id = uuid4()
+        if not hasattr(self, 'created_at'):
+            self.created_at = datetime.now()
+        if not hasattr(self, 'modified_at'):
+            self.modified_at = datetime.now()
     
     def to_dict(self) -> JsonDict:
         """Convert model to dictionary."""
@@ -126,8 +130,8 @@ class BaseModel:
 @dataclass
 class Result(Generic[T]):
     """Generic result type for operations."""
-    success: bool
     message: str
+    success: bool
     data: Optional[T] = None
     error: Optional[Exception] = None
     metadata: JsonDict = field(default_factory=dict)

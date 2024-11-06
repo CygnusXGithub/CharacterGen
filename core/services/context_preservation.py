@@ -27,11 +27,11 @@ class StorageConfig(BaseModel):
 @dataclass
 class ContextMetadata(BaseModel):
     """Metadata for context tracking."""
-    parent_ids: List[str] = field(default_factory=list)
     field_name: str
     version: str = "1.0"
     source: str = "generation"
     tags: List[str] = field(default_factory=list)
+    parent_ids: List[str] = field(default_factory=list)
 
 class ContextPreservationService:
     """Service for managing and preserving generation contexts."""
